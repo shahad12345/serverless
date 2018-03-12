@@ -1,0 +1,17 @@
+service: cloudsystems-serverless
+plugins:
+  - serverless-offline
+provider:
+  name: aws
+  runtime: nodejs6.10
+  environment:
+    EMAIL_USERNAME: ${env:EMAIL_USERNAME}
+    EMAIL_PASSWORD: ${env:EMAIL_PASSWORD}
+functions:
+  contactUs:
+    handler: handler.contactUs
+    events:
+      - http:
+          path: contact-us
+          method: get
+          cors: true

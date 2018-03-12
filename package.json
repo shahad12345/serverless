@@ -1,0 +1,29 @@
+{
+  "name": "cloudsystems-serverless",
+  "version": "1.0.0",
+  "description": "The Serverless for CloudSystems.",
+  "main": "handler.js",
+  "scripts": {
+    "start": "serverless offline",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CloudSystemsSA/serverless.git"
+  },
+  "keywords": [
+    "cloudsystems"
+  ],
+  "author": "Hussam Alzughaibi",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/CloudSystemsSA/serverless/issues"
+  },
+  "homepage": "https://github.com/CloudSystemsSA/serverless#readme",
+  "devDependencies": {
+    "serverless-offline": "^3.18.0"
+  },
+  "dependencies": {
+    "gmail-send": "^1.2.13"
+  }
+}
