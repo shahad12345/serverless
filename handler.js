@@ -19,10 +19,16 @@ function validateEmail(email) {
 
 module.exports.contactUs = (event, context, callback) => {
 
-  const name = event.queryStringParameters ? event.queryStringParameters.name : null;
-  const email = event.queryStringParameters ? event.queryStringParameters.email : null;
-  const subject = event.queryStringParameters ? event.queryStringParameters.subject : null;
-  const message = event.queryStringParameters ? event.queryStringParameters.message : null;
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
+
+  const name = body ? body.name : null;
+  const email = body ? body.email : null;
+  const subject = body ? body.subject : null;
+  const message = body ? body.message : null;
 
   if (!name || !email || !subject || !message) {
     return callback(null, makeResponse(400));

@@ -13,5 +13,5 @@ functions:
     events:
       - http:
           path: contact-us
-          method: get
+          method: post
           cors: true
