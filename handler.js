@@ -41,6 +41,7 @@ module.exports.contactUs = (event, context, callback) => {
   const send = gmailSend({
     user: process.env.EMAIL_USERNAME,
     pass: process.env.EMAIL_PASSWORD,
+    from: process.env.EMAIL_USERNAME,
     to: process.env.CONTACT_EMAIL,
     subject: subject,
     text: `${name} <${email}>\n\n${message}`, // Or use html.
