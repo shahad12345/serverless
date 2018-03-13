@@ -1,33 +1,46 @@
 'use strict';
 
-// const gmailSend = require('gmail-send');
+const gmailSend = require('gmail-send');
+
+function makeResponse(statusCode) {
+  return {
+    statusCode: statusCode,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+    },
+  };
+}
+
+// https://stackoverflow.com/questions/46155/how-to-validate-an-email-address-in-javascript
+function validateEmail(email) {
+    var re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+    return re.test(String(email).toLowerCase());
+}
 
 module.exports.contactUs = (event, context, callback) => {
-  const response = {
-    statusCode: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*', // Required for CORS support to work
-    },
-    body: JSON.stringify({
-      message: 'Go Serverless v1.0! Your function executed successfully!',
-      input: event,
-    }),
-  };
 
-  var send = require('gmail-send')({
+  const name = event.queryStringParameters ? event.queryStringParameters.name : null;
+  const email = event.queryStringParameters ? event.queryStringParameters.email : null;
+  const subject = event.queryStringParameters ? event.queryStringParameters.subject : null;
+  const message = event.queryStringParameters ? event.queryStringParameters.message : null;
+
+  if (!name || !email || !subject || !message) {
+    return callback(null, makeResponse(400));
+  }
+
+  if (validateEmail(email) === false) {
+    return callback(null, makeResponse(406));
+  }
+
+  const send = gmailSend({
     user: process.env.EMAIL_USERNAME,
     pass: process.env.EMAIL_PASSWORD,
-    to: 'hossamzee@gmail.com',
-    subject: 'test subject',
-    text: 'gmail-send example 1',         // Plain text
-    //html:    '<b>html text</b>'            // HTML
+    to: process.env.CONTACT_EMAIL,
+    subject: subject,
+    text: `${name} <${email}>\n\n${message}`, // Or use html.
   });
 
-  send({}, function (err, res) {
-    console.log('* [example 1.1] send() callback returned: err:', err, '; res:', res);
+  send({}, function (error, response) {
+    return callback(null, makeResponse(error ? 408 : 204));
   });
-
-  // console.log('send', send, typeof send);
-
-  callback(null, response);
 };
