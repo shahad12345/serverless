@@ -43,6 +43,7 @@ module.exports.contactUs = (event, context, callback) => {
     pass: process.env.EMAIL_PASSWORD,
     from: process.env.EMAIL_USERNAME,
     to: process.env.CONTACT_EMAIL,
+    replyTo: email,
     subject: subject,
     text: `${name} <${email}>\n\n${message}`, // Or use html.
   });
