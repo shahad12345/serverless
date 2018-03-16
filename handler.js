@@ -1,6 +1,14 @@
 'use strict';
 
-const gmailSend = require('gmail-send');
+const AWS = require('aws-sdk');
+
+AWS.config.update({
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  region: process.env.AWS_REGION,
+});
+
+const ses = new AWS.SES();
 
 function makeResponse(statusCode) {
   return {
@@ -38,17 +46,27 @@ module.exports.contactUs = (event, context, callback) => {
     return callback(null, makeResponse(406));
   }
 
-  const send = gmailSend({
-    user: process.env.EMAIL_USERNAME,
-    pass: process.env.EMAIL_PASSWORD,
-    from: process.env.EMAIL_USERNAME,
-    to: process.env.CONTACT_EMAIL,
-    replyTo: email,
-    subject: subject,
-    text: `${name} <${email}>\n\n${message}`, // Or use html.
-  });
+  const emailParams = {
+    Destination: {
+      ToAddresses: [process.env.CONTACT_EMAIL]
+    },
+    Message: {
+      Body: {
+        Text: {
+          Data: `${name} <${email}>\n\n${message}`,
+          Charset: 'utf-8'
+        }
+      },
+      Subject: {
+        Data: subject,
+        Charset: 'utf-8'
+      }
+    },
+    Source: process.env.CONTACT_EMAIL,
+    ReplyToAddresses: [email]
+  };
 
-  send({}, function (error, response) {
+  ses.sendEmail(emailParams, function (error, response) {
     return callback(null, makeResponse(error ? 408 : 204));
   });
 };

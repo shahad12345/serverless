@@ -24,6 +24,6 @@
     "serverless-offline": "^3.18.0"
   },
   "dependencies": {
-    "gmail-send": "^1.2.13"
+    "aws-sdk": "^2.6.8"
   }
 }

@@ -8,6 +8,9 @@ provider:
     EMAIL_USERNAME: ${env:EMAIL_USERNAME}
     EMAIL_PASSWORD: ${env:EMAIL_PASSWORD}
     CONTACT_EMAIL: ${env:CONTACT_EMAIL}
+    AWS_REGION: ${env:AWS_REGION}
+    AWS_ACCESS_KEY_ID: ${env:AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${env:AWS_SECRET_ACCESS_KEY}
 functions:
   contactUs:
     handler: handler.contactUs
