@@ -5,6 +5,7 @@ provider:
   name: aws
   runtime: nodejs6.10
   environment:
+    SENDER_EMAIL: ${env:SENDER_EMAIL}
     CONTACT_EMAIL: ${env:CONTACT_EMAIL}
     SES_USER_REGION: ${env:SES_USER_REGION}
     SES_USER_ACCESS_KEY_ID: ${env:SES_USER_ACCESS_KEY_ID}

@@ -62,7 +62,7 @@ module.exports.contactUs = (event, context, callback) => {
         Charset: 'utf-8'
       }
     },
-    Source: process.env.CONTACT_EMAIL,
+    Source: process.env.SENDER_EMAIL,
     ReplyToAddresses: [email]
   };
 
