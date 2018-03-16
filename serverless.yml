@@ -5,12 +5,10 @@ provider:
   name: aws
   runtime: nodejs6.10
   environment:
-    EMAIL_USERNAME: ${env:EMAIL_USERNAME}
-    EMAIL_PASSWORD: ${env:EMAIL_PASSWORD}
     CONTACT_EMAIL: ${env:CONTACT_EMAIL}
-    AWS_REGION: ${env:AWS_REGION}
-    AWS_ACCESS_KEY_ID: ${env:AWS_ACCESS_KEY_ID}
-    AWS_SECRET_ACCESS_KEY: ${env:AWS_SECRET_ACCESS_KEY}
+    SES_USER_REGION: ${env:SES_USER_REGION}
+    SES_USER_ACCESS_KEY_ID: ${env:SES_USER_ACCESS_KEY_ID}
+    SES_USER_SECRET_ACCESS_KEY: ${env:SES_USER_SECRET_ACCESS_KEY}
 functions:
   contactUs:
     handler: handler.contactUs

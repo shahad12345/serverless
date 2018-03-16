@@ -3,9 +3,9 @@
 const AWS = require('aws-sdk');
 
 AWS.config.update({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION,
+  accessKeyId: process.env.SES_USER_ACCESS_KEY_ID,
+  secretAccessKey: process.env.SES_USER_SECRET_ACCESS_KEY,
+  region: process.env.SES_USER_REGION,
 });
 
 const ses = new AWS.SES();
@@ -67,6 +67,8 @@ module.exports.contactUs = (event, context, callback) => {
   };
 
   ses.sendEmail(emailParams, function (error, response) {
+    console.log('error', error);
+    console.log('response', response);
     return callback(null, makeResponse(error ? 408 : 204));
   });
 };
