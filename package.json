@@ -21,9 +21,11 @@
   },
   "homepage": "https://github.com/CloudSystemsSA/serverless#readme",
   "devDependencies": {
+    "serverless-domain-manager": "^2.3.5",
     "serverless-offline": "^3.18.0"
   },
   "dependencies": {
-    "aws-sdk": "^2.6.8"
+    "aws-sdk": "^2.6.8",
+    "uuid": "^3.2.1"
   }
 }

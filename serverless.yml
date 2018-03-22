@@ -9,11 +9,17 @@ provider:
     SENDER_EMAIL: ${env:SENDER_EMAIL}
     CONTACT_EMAIL: ${env:CONTACT_EMAIL}
   iamRoleStatements:
-    - Effect: 'Allow'
+    - Effect: Allow
       Action:
-        - 'ses:SendEmail'
-      Resource:
-        '*'
+        - ses:SendEmail
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: '*'
 functions:
   contactUs:
     handler: handler.contactUs
@@ -22,3 +28,28 @@ functions:
           path: contact-us
           method: post
           cors: true
+  apply:
+    handler: handler.apply
+    events:
+      - http:
+          path: apply
+          method: post
+          cors: true
+resources:
+  Resources:
+    TraineesDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        TableName: trainees
