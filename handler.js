@@ -5,6 +5,7 @@ const uuid = require('uuid');
 const AWS = require('aws-sdk');
 const SES = new AWS.SES();
 const DynamoDB = new AWS.DynamoDB.DocumentClient();
+const StepFunctions = new AWS.StepFunctions();
 
 // Constants.
 const program = 'summer-2018';
@@ -37,6 +38,15 @@ function validateDate(date) {
 function validateYoutubeVideoUrl(youtubeVideoUrl) {
   var re = /^http(s)?:\/\/(www\.)?youtu(be\.com|.be)\/.+$/;
   return re.test(youtubeVideoUrl);
+}
+
+function generateToken() {
+  var text = '';
+  var possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (var i = 0; i < 96; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
 }
 
 module.exports.contactUs = (event, context, callback) => {
@@ -115,6 +125,17 @@ module.exports.contactUs = (event, context, callback) => {
 //     passed
 //     candidated
 
+// contributors
+//   id
+//   token
+//   fullname
+//   gender
+//   email
+//   mobile
+//   location
+//   createdAt
+//   updatedAt
+
 module.exports.apply = (event, context, callback) => {
 
   try {
@@ -144,7 +165,7 @@ module.exports.apply = (event, context, callback) => {
   if (validateEmail(email) === false || validateMobile(mobile) == false || validateDate(expectedGraduationDate) == false || validateYoutubeVideoUrl(youtubeVideoUrl) == false) {
     return callback(null, makeResponse(406));
   }
-  
+
   const checkIfTraineeAlreadyExists = (callback) => {
     const scanParams = {
       TableName: 'trainees',
@@ -190,13 +211,32 @@ module.exports.apply = (event, context, callback) => {
     DynamoDB.put(putParams, (error) => {
       return callback(error);
     });
-  }
+  };
 
   // Check if the trainee is already there.
   checkIfTraineeAlreadyExists((exists) => {
     if (exists) return callback(null, makeResponse(409));
-    addTrainee((error) => {
-      return callback(null, makeResponse(error ? 408 : 204));
+    addTrainee((cannotAdd) => {
+      if (cannotAdd) return callback(null, makeResponse(408));
+      console.log(process.env.AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN);
+      StepFunctions.startExecution({
+        stateMachineArn: process.env.AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN,
+        input: JSON.stringify({
+            id: id,
+        }),
+      }, (error) => {
+        return callback(null, makeResponse(204));
+      })
     });
   });
-}
+};
+
+module.exports.notifyContributorsWhenTraineeApplies = (event, context, callback) => {
+  console.log('notifyContributorsWhenTraineeApplies.', event);
+  return callback(null, {id: event.id});
+};
+
+module.exports.notifyContributorsAfterVotesCalculated = (event, context, callback) => {
+  console.log('notifyContributorsAfterVotesCalculated', event);
+  return callback(null, {id: event.id});
+};

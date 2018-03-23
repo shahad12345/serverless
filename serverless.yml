@@ -1,6 +1,8 @@
 service: cloudsystems-serverless
 plugins:
   - serverless-offline
+  - serverless-step-functions
+  - serverless-pseudo-parameters
 provider:
   name: aws
   runtime: nodejs6.10
@@ -19,6 +21,7 @@ provider:
         - dynamodb:PutItem
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
+        - states:StartExecution
       Resource: '*'
 functions:
   contactUs:
@@ -35,6 +38,41 @@ functions:
           path: apply
           method: post
           cors: true
+    environment:
+      AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN: "arn:aws:states:#{AWS::Region}:#{AWS::AccountId}:stateMachine:afterTraineeAppliesStateMachine"
+  notifyContributorsWhenTraineeApplies:
+    handler: handler.notifyContributorsWhenTraineeApplies
+  notifyContributorsAfterVotesCalculated:
+    handler: handler.notifyContributorsAfterVotesCalculated
+
+stepFunctions:
+  stateMachines:
+    afterTraineeAppliesStateMachine:
+      name: afterTraineeAppliesStateMachine
+      definition:
+        Comment: "A state machine happens after a trainee applies."
+        StartAt: notifyContributorsWhenTraineeApplies
+        States:
+          notifyContributorsWhenTraineeApplies:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyContributorsWhenTraineeApplies"
+            Next: waitForPeriodOfTime
+          waitForPeriodOfTime:
+            Type: Wait
+            Seconds: 10
+            Next: notifyContributorsAfterVotesCalculated
+          notifyContributorsAfterVotesCalculated:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyContributorsAfterVotesCalculated"
+            End: true
+
+  # test:
+  #   handler: handler.test
+  #   events:
+  #     - http:
+  #         path: test
+  #         method: get
+  #         cors: true
 resources:
   Resources:
     TraineesDynamoDBTable:
@@ -53,3 +91,19 @@ resources:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
         TableName: trainees
+    ContributorsDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        TableName: contributors
