@@ -42,8 +42,8 @@ functions:
       AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN: "arn:aws:states:#{AWS::Region}:#{AWS::AccountId}:stateMachine:afterTraineeAppliesStateMachine"
   notifyContributorsWhenTraineeApplies:
     handler: handler.notifyContributorsWhenTraineeApplies
-  notifyContributorsAfterVotesCalculated:
-    handler: handler.notifyContributorsAfterVotesCalculated
+  notifyWhenVotesCalculated:
+    handler: handler.notifyWhenVotesCalculated
 
 stepFunctions:
   stateMachines:
@@ -60,10 +60,10 @@ stepFunctions:
           waitForPeriodOfTime:
             Type: Wait
             Seconds: 10
-            Next: notifyContributorsAfterVotesCalculated
-          notifyContributorsAfterVotesCalculated:
+            Next: notifyWhenVotesCalculated
+          notifyWhenVotesCalculated:
             Type: Task
-            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyContributorsAfterVotesCalculated"
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyWhenVotesCalculated"
             End: true
 
   # test:

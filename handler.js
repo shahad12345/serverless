@@ -236,7 +236,7 @@ module.exports.notifyContributorsWhenTraineeApplies = (event, context, callback)
   return callback(null, {id: event.id});
 };
 
-module.exports.notifyContributorsAfterVotesCalculated = (event, context, callback) => {
-  console.log('notifyContributorsAfterVotesCalculated', event);
+module.exports.notifyWhenVotesCalculated = (event, context, callback) => {
+  console.log('notifyWhenVotesCalculated', event);
   return callback(null, {id: event.id});
 };
