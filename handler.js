@@ -40,7 +40,7 @@ function validateYoutubeVideoUrl(youtubeVideoUrl) {
   return re.test(youtubeVideoUrl);
 }
 
-function generateToken() {
+function generatingAccessToken() {
   var text = '';
   var possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   for (var i = 0; i < 96; i++) {
@@ -105,7 +105,7 @@ module.exports.contactUs = (event, context, callback) => {
 //   mobile
 //   university
 //   major
-//   location
+//   place
 //   expectedGraduationDate
 //   youtubeVideoUrl
 //   howDidYouKnowAboutUs
@@ -127,12 +127,12 @@ module.exports.contactUs = (event, context, callback) => {
 
 // contributors
 //   id
-//   token
+//   accessToken
 //   fullname
 //   gender
 //   email
 //   mobile
-//   location
+//   place
 //   createdAt
 //   updatedAt
 
@@ -152,12 +152,12 @@ module.exports.apply = (event, context, callback) => {
   const mobile = body ? body.mobile : null;
   const university = body ? body.university : null;
   const major = body ? body.major : null;
-  const location = body ? body.location : null;
+  const place = body ? body.place : null;
   const expectedGraduationDate = body ? body.expectedGraduationDate : null;
   const youtubeVideoUrl = body ? body.youtubeVideoUrl : null;
   const howDidYouKnowAboutUs = body ? body.howDidYouKnowAboutUs : null;
 
-  if (!fullname || !gender || !email || !mobile || !university || !major || !location || !expectedGraduationDate || !youtubeVideoUrl || !howDidYouKnowAboutUs) {
+  if (!fullname || !gender || !email || !mobile || !university || !major || !place || !expectedGraduationDate || !youtubeVideoUrl || !howDidYouKnowAboutUs) {
     return callback(null, makeResponse(400));
   }
 
@@ -194,14 +194,14 @@ module.exports.apply = (event, context, callback) => {
         mobile: mobile,
         university: university,
         major: major,
-        location: location,
+        place: place,
         expectedGraduationDate: expectedGraduationDate,
         youtubeVideoUrl: youtubeVideoUrl,
         howDidYouKnowAboutUs: howDidYouKnowAboutUs,
         statuses: [
           {
-            type: 'applied',
-            when: timestamp,
+            event: 'applied',
+            createdAt: timestamp,
           }
         ],
         createdAt: timestamp,
@@ -231,12 +231,95 @@ module.exports.apply = (event, context, callback) => {
   });
 };
 
-module.exports.notifyContributorsWhenTraineeApplies = (event, context, callback) => {
-  console.log('notifyContributorsWhenTraineeApplies.', event);
+// const checkIfContributorCanAccess = null;
+
+module.exports.notifyWhenTraineeApplies = (event, context, callback) => {
+  console.log('notifyWhenTraineeApplies.', event);
   return callback(null, {id: event.id});
 };
 
 module.exports.notifyWhenVotesCalculated = (event, context, callback) => {
   console.log('notifyWhenVotesCalculated', event);
   return callback(null, {id: event.id});
+};
+
+const getContributorByAccessToken = (accessToken, callback) => {
+    const scanParams = {
+      TableName: 'contributors',
+      FilterExpression: 'accessToken = :accessToken',
+      ExpressionAttributeValues: {
+        ':accessToken': accessToken,
+      },
+    };
+    DynamoDB.scan(scanParams, (error, result) => {
+      return (error || result.Count == 0) ? callback(null) : callback(result.Items[0]);
+    });
+};
+
+const getTraineeById = (id, callback) => {
+    const scanParams = {
+      TableName: 'trainees',
+      FilterExpression: 'id = :id',
+      ExpressionAttributeValues: {
+        ':id': id,
+      },
+    };
+    DynamoDB.scan(scanParams, (error, result) => {
+      return (error || result.Count == 0) ? callback(null) : callback(result.Items[0]);
+    });
+};
+
+module.exports.vote = (event, context, callback) => {
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
+
+  const accessToken = body ? body.accessToken : null;
+  const traineeId = body ? body.traineeId : null;
+  let rating = body ? body.rating : null;
+
+  if (!accessToken || !traineeId || !rating) {
+    return callback(null, makeResponse(400));
+  }
+
+  rating = (rating == 'up') ? 'up' : 'down';
+
+  getContributorByAccessToken(accessToken, (contributor) => {
+    if (!contributor) return callback(null, makeResponse(401));
+    return getTraineeById(traineeId, (trainee) => {
+      if (!trainee) return callback(null, makeResponse(404));
+      
+      const alreadyVoted = trainee.statuses.find((status) => {
+        return status.event == 'voteAdded' && status.createdBy == contributor.id
+      }) !== undefined;
+
+      // Check if the contributor already voted.
+      if (alreadyVoted) return callback(null, makeResponse(409));
+
+      const timestamp = new Date().getTime();
+      const params = {
+        TableName: 'trainees',
+        Key: {
+          id: trainee.id,
+        },
+        ExpressionAttributeValues: {
+          ':status': [{
+            event: 'voteAdded',
+            rating: rating,
+            createdAt: timestamp,
+            createdBy: contributor.id,
+          }],
+          ':updatedAt': timestamp,
+        },
+        UpdateExpression: 'SET statuses = list_append(statuses, :status), updatedAt = :updatedAt',
+        ReturnValues: 'ALL_NEW',
+      };
+
+      DynamoDB.update(params, (error, result) => {
+        return callback(null, makeResponse(error ? 408 : 204));
+      });
+    });
+  });
 };

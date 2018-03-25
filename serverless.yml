@@ -40,26 +40,40 @@ functions:
           cors: true
     environment:
       AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN: "arn:aws:states:#{AWS::Region}:#{AWS::AccountId}:stateMachine:afterTraineeAppliesStateMachine"
-  notifyContributorsWhenTraineeApplies:
-    handler: handler.notifyContributorsWhenTraineeApplies
+  notifyWhenTraineeApplies:
+    handler: handler.notifyWhenTraineeApplies
   notifyWhenVotesCalculated:
     handler: handler.notifyWhenVotesCalculated
+  vote:
+    handler: handler.vote
+    events:
+      - http:
+          path: vote
+          method: post
+          cors: true
+  # test:
+  #   handler: handler.test
+  #   events:
+  #     - http:
+  #         path: test
+  #         method: get
+  #         cors: true
 
 stepFunctions:
   stateMachines:
     afterTraineeAppliesStateMachine:
       name: afterTraineeAppliesStateMachine
       definition:
-        Comment: "A state machine happens after a trainee applies."
-        StartAt: notifyContributorsWhenTraineeApplies
+        Comment: A state machine happens after a trainee applies.
+        StartAt: notifyWhenTraineeApplies
         States:
-          notifyContributorsWhenTraineeApplies:
+          notifyWhenTraineeApplies:
             Type: Task
-            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyContributorsWhenTraineeApplies"
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyWhenTraineeApplies"
             Next: waitForPeriodOfTime
           waitForPeriodOfTime:
             Type: Wait
-            Seconds: 10
+            Seconds: 60
             Next: notifyWhenVotesCalculated
           notifyWhenVotesCalculated:
             Type: Task
