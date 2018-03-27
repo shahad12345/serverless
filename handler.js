@@ -218,24 +218,90 @@ module.exports.apply = (event, context, callback) => {
     if (exists) return callback(null, makeResponse(409));
     addTrainee((cannotAdd) => {
       if (cannotAdd) return callback(null, makeResponse(408));
-      console.log(process.env.AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN);
+      // console.log(process.env.AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN);
       StepFunctions.startExecution({
         stateMachineArn: process.env.AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN,
         input: JSON.stringify({
             id: id,
         }),
       }, (error) => {
+        console.log('error', error);
         return callback(null, makeResponse(204));
       })
     });
   });
 };
 
-// const checkIfContributorCanAccess = null;
+const listContributors = (contributors) => {
+    const scanParams = {
+      TableName: 'contributors',
+    };
+    DynamoDB.scan(scanParams, (error, result) => {
+      return contributors(result.Items);
+    });
+};
+
+const findTraineeAppliesTemplateOrCreate = (done) => {
+  var params = {
+    Template: {
+      TemplateName: 'TraineeApplies',
+      SubjectPart: 'متقدّم جديد: {{traineeFullname}}!',
+      HtmlPart: '<div style="direction: rtl">{{contributorFullname}}، السلام عليكم.<br /><br />هناك متقدّم جديد إلى التدريب بالتفاصيل التالية:<br /><br />الاسم الكامل: {{traineeFullname}}.<br />الجنس: {{gender}}.<br />البريد الإلكتروني: {{email}}.<br />رقم الجوّال: <span style="direction: ltr">{{mobile}}</span>.<br />اسم الجامعة: {{university}}.<br />التخصّص: {{major}}.<br />مكان الإقامة: {{place}}.<br />التاريخ المتوقّع للتخرّج: {{expectedGraduationDate}}.<br />رابط ڤيديو التعريف الذاتي: <a href="{{youtubeVideoUrl}}">{{youtubeVideoUrl}}</a>.<br />كيف عرف عنّا: {{howDidYouKnowAboutUs}}.<br /><br />للتصويت بقبول المتقدّم، تفضّل بزيارة هذا الرابط:<br /><a href="{{voteUpUrl}}">{{voteUpUrl}}</a><br /><br />أو للتصويت برفض المتقدّم، تفضّل بزيارة هذا الرابط:<br /><a href="{{voteDownUrl}}">{{voteDownUrl}}</a><br /><br />كلّ الحظّ النبيل،<br />مؤسّسة أنظمة غيمة (CloudSystems).</div>',
+    },
+  };
+  SES.createTemplate(params, (error, data) => {
+    return done(true);
+  });
+};
 
 module.exports.notifyWhenTraineeApplies = (event, context, callback) => {
-  console.log('notifyWhenTraineeApplies.', event);
-  return callback(null, {id: event.id});
+  listContributors((contributors) => {
+    findTraineeAppliesTemplateOrCreate((done) => {
+      // SES.deleteTemplate({TemplateName: 'TraineeApplies'}, (error, data) => {
+      //   console.log(error);
+      //   console.log(data);
+      // });
+      getTraineeById(event.id, (trainee) => {
+        if (!trainee) return callback(new Error('Trainee does not exist.'));
+        var destinations = [];
+        for (var i = contributors.length - 1; i >= 0; i--) {
+          const voteUrl = `https://cloudsystems.sa/vote.html?accessToken=${contributors[0].accessToken}&traineeId=${trainee.id}`;
+          destinations.push({
+            Destination: {
+              ToAddresses: [contributors[i].email],
+            },
+            ReplacementTemplateData: JSON.stringify({
+              contributorFullname: contributors[i].fullname,
+              voteUpUrl: `${voteUrl}&rating=up`,
+              voteDownUrl: `${voteUrl}&rating=down`,
+            }),
+          });
+        }
+        var params = {
+          Source: process.env.SENDER_EMAIL,
+          Template: 'TraineeApplies',
+          Destinations: destinations,
+          DefaultTemplateData: JSON.stringify({
+            traineeFullname: trainee.fullname,
+            gender: trainee.gender,
+            email: trainee.email,
+            mobile: trainee.mobile,
+            university: trainee.university,
+            major: trainee.major,
+            place: trainee.place,
+            expectedGraduationDate: trainee.expectedGraduationDate,
+            youtubeVideoUrl: trainee.youtubeVideoUrl,
+            howDidYouKnowAboutUs: trainee.howDidYouKnowAboutUs,
+          }),
+        };
+        SES.sendBulkTemplatedEmail(params, (error, data) => {
+          console.log(error);
+          if (error) return callback(new Error('Cannot send a bulk email.'));
+          return callback(null, {id: event.id});
+        });
+      });
+    });
+  });
 };
 
 module.exports.notifyWhenVotesCalculated = (event, context, callback) => {
@@ -290,7 +356,7 @@ module.exports.vote = (event, context, callback) => {
     if (!contributor) return callback(null, makeResponse(401));
     return getTraineeById(traineeId, (trainee) => {
       if (!trainee) return callback(null, makeResponse(404));
-      
+
       const alreadyVoted = trainee.statuses.find((status) => {
         return status.event == 'voteAdded' && status.createdBy == contributor.id
       }) !== undefined;
