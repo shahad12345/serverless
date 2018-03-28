@@ -246,7 +246,7 @@ const findTraineeAppliesTemplateOrCreate = (done) => {
     Template: {
       TemplateName: 'TraineeApplies',
       SubjectPart: 'متقدّم جديد: {{traineeFullname}}!',
-      HtmlPart: '<div style="direction: rtl">{{contributorFullname}}، السلام عليكم.<br /><br />هناك متقدّم جديد إلى التدريب بالتفاصيل التالية:<br /><br />الاسم الكامل: {{traineeFullname}}.<br />الجنس: {{gender}}.<br />البريد الإلكتروني: {{email}}.<br />رقم الجوّال: <span style="direction: ltr">{{mobile}}</span>.<br />اسم الجامعة: {{university}}.<br />التخصّص: {{major}}.<br />مكان الإقامة: {{place}}.<br />التاريخ المتوقّع للتخرّج: {{expectedGraduationDate}}.<br />رابط ڤيديو التعريف الذاتي: <a href="{{youtubeVideoUrl}}">{{youtubeVideoUrl}}</a>.<br />كيف عرف عنّا: {{howDidYouKnowAboutUs}}.<br /><br />للتصويت بقبول المتقدّم، تفضّل بزيارة هذا الرابط:<br /><a href="{{voteUpUrl}}">{{voteUpUrl}}</a><br /><br />أو للتصويت برفض المتقدّم، تفضّل بزيارة هذا الرابط:<br /><a href="{{voteDownUrl}}">{{voteDownUrl}}</a><br /><br />كلّ الحظّ النبيل،<br />مؤسّسة أنظمة غيمة (CloudSystems).</div>',
+      HtmlPart: '<div style="direction: rtl">{{contributorFullname}}، السلام عليكم.<br /><br />هناك متقدّم جديد إلى التدريب بالتفاصيل التالية:<br /><br />الاسم الكامل: {{traineeFullname}}.<br />الجنس: {{gender}}.<br />البريد الإلكتروني: {{email}}.<br />رقم الجوّال: <span style="direction: ltr">{{mobile}}</span>.<br />اسم الجامعة: {{university}}.<br />التخصّص: {{major}}.<br />مكان الإقامة: {{place}}.<br />التاريخ المتوقّع للتخرّج: {{expectedGraduationDate}}.<br />رابط ڤيديو التعريف الذاتي: <a href="{{youtubeVideoUrl}}">{{youtubeVideoUrl}}</a>.<br />كيف عرف عنّا: {{howDidYouKnowAboutUs}}.<br /><br />للتصويت بقبول المتقدّم، تفضّل بزيارة هذا الرابط:<br /><a href="{{voteUpUrl}}">{{voteUpUrl}}</a><br /><br />أو للتصويت برفض المتقدّم، تفضّل بزيارة هذا الرابط:<br /><a href="{{voteDownUrl}}">{{voteDownUrl}}</a><br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (CloudSystems).</div>',
     },
   };
   SES.createTemplate(params, (error, data) => {
@@ -257,7 +257,7 @@ const findTraineeAppliesTemplateOrCreate = (done) => {
 module.exports.notifyWhenTraineeApplies = (event, context, callback) => {
   listContributors((contributors) => {
     findTraineeAppliesTemplateOrCreate((done) => {
-      // SES.deleteTemplate({TemplateName: 'TraineeApplies'}, (error, data) => {
+      // return SES.deleteTemplate({TemplateName: 'TraineeApplies'}, (error, data) => {
       //   console.log(error);
       //   console.log(data);
       // });
@@ -304,9 +304,103 @@ module.exports.notifyWhenTraineeApplies = (event, context, callback) => {
   });
 };
 
+const calculateUpVotesPercentage = (upVotes, downVotes, contributors) => {
+  let denominator = (contributors == 0) ? 1 : contributors;
+  return (upVotes/denominator)*100;
+};
+
 module.exports.notifyWhenVotesCalculated = (event, context, callback) => {
-  console.log('notifyWhenVotesCalculated', event);
-  return callback(null, {id: event.id});
+  // console.log('notifyWhenVotesCalculated', event);
+  getTraineeById(event.id, (trainee) => {
+    if (!trainee) return callback(new Error('Trainee does not exist.'));
+
+    const alreadyVotesCalculated = trainee.statuses.find((status) => {
+      return status.event == 'votesCalculated';
+    }) !== undefined;
+
+    // Check if the votes already calculated.
+    if (alreadyVotesCalculated) return callback(new Error('The votes are already calculated.'));
+
+    listContributors((contributors) => {
+      const timestamp = new Date().getTime();
+
+      const upVotes = trainee.statuses.filter((status) => {
+        return status.event == 'voteAdded' && status.rating == 'up';
+      }).length;
+
+      const downVotes = trainee.statuses.filter((status) => {
+        return status.event == 'voteAdded' && status.rating == 'down';
+      }).length;
+
+      var statuses = [{
+        event: 'votesCalculated',
+        upVotes: upVotes,
+        downVotes: downVotes,
+        contributors: contributors.length,
+        upVotesPercentage: calculateUpVotesPercentage(upVotes, downVotes, contributors.length),
+        createdAt: timestamp,
+      }];
+
+      if (statuses[0].upVotesPercentage >= 60) {
+        statuses.push({
+          event: 'initiallyAccepted',
+          createdAt: timestamp,
+        });
+      } else {
+        statuses.push({
+          event: 'initiallyRejected',
+          createdAt: timestamp,
+        });
+      }
+
+      const params = {
+        TableName: 'trainees',
+        Key: {
+          id: trainee.id,
+        },
+        ExpressionAttributeValues: {
+          ':status': statuses,
+          ':updatedAt': timestamp,
+        },
+        UpdateExpression: 'SET statuses = list_append(statuses, :status), updatedAt = :updatedAt',
+        ReturnValues: 'ALL_NEW',
+      };
+
+      var subject = 'تمّ قبولك في برنامج التدريب الصيفي!';
+      var message = `<div style="direction: rtl">${trainee.fullname}، السلام عليكم.<br /><br />تمّ قبولك في برنامج التدريب الصيفي لمؤسّسة أنظمة غيمة (CloudSystems) لعام 2018. نرجو إكمال الإجراءات والنماذج التي تتطلّبها الجامعة ثمّ إرسال الوثائق ذات العلاقة لنا من خلال الردّ على هذه الرسالة.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (CloudSystems).</div>`;
+
+      if (statuses[1].event == 'initiallyRejected') {
+        subject = 'نعتذر عن قبولك في برنامج التدريب الصيفي';
+        message = `<div style="direction: rtl">${trainee.fullname}، السلام عليكم.<br /><br />نعتذر عن قبولك في برنامج التدريب الصيفي لمؤسّسة أنظمة غيمة (CloudSystems) لعام 2018.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (CloudSystems).</div>`;
+      }
+
+      DynamoDB.update(params, (error, result) => {
+        const emailParams = {
+          Destination: {
+            ToAddresses: [trainee.email]
+          },
+          Message: {
+            Body: {
+              Html: {
+                Data: message,
+                Charset: 'utf-8'
+              }
+            },
+            Subject: {
+              Data: subject,
+              Charset: 'utf-8'
+            }
+          },
+          Source: process.env.SENDER_EMAIL,
+          ReplyToAddresses: [process.env.CONTACT_EMAIL]
+        };
+        SES.sendEmail(emailParams, (error, response) => {
+          return callback(null, {id: event.id});
+        });
+      });
+    });
+  });
+  // return callback(null, {id: event.id});
 };
 
 const getContributorByAccessToken = (accessToken, callback) => {
@@ -358,7 +452,7 @@ module.exports.vote = (event, context, callback) => {
       if (!trainee) return callback(null, makeResponse(404));
 
       const alreadyVoted = trainee.statuses.find((status) => {
-        return status.event == 'voteAdded' && status.createdBy == contributor.id
+        return status.event == 'votesCalculated' || (status.event == 'voteAdded' && status.createdBy == contributor.id);
       }) !== undefined;
 
       // Check if the contributor already voted.
