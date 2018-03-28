@@ -265,7 +265,7 @@ module.exports.notifyWhenTraineeApplies = (event, context, callback) => {
         if (!trainee) return callback(new Error('Trainee does not exist.'));
         var destinations = [];
         for (var i = contributors.length - 1; i >= 0; i--) {
-          const voteUrl = `https://cloudsystems.sa/vote.html?accessToken=${contributors[0].accessToken}&traineeId=${trainee.id}`;
+          const voteUrl = `https://cloudsystems.sa/vote.html?accessToken=${contributors[i].accessToken}&traineeId=${trainee.id}`;
           destinations.push({
             Destination: {
               ToAddresses: [contributors[i].email],
