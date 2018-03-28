@@ -73,13 +73,12 @@ stepFunctions:
             Next: waitForPeriodOfTime
           waitForPeriodOfTime:
             Type: Wait
-            Seconds: 60
+            Seconds: 300
             Next: notifyWhenVotesCalculated
           notifyWhenVotesCalculated:
             Type: Task
             Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyWhenVotesCalculated"
             End: true
-
   # test:
   #   handler: handler.test
   #   events:
