@@ -40,7 +40,7 @@ function validateYoutubeVideoUrl(youtubeVideoUrl) {
   return re.test(youtubeVideoUrl);
 }
 
-function generatingAccessToken() {
+function generateAccessToken() {
   var text = '';
   var possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   for (var i = 0; i < 96; i++) {
