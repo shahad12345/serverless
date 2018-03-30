@@ -393,7 +393,7 @@ module.exports.notifyWhenVotesCalculated = (event, context, callback) => {
             }
           },
           Source: process.env.SENDER_EMAIL,
-          ReplyToAddresses: [process.env.CONTACT_EMAIL]
+          ReplyToAddresses: [process.env.CONTACT_EMAIL],
           CcAddresses: [process.env.CONTACT_EMAIL]
         };
         SES.sendEmail(emailParams, (error, response) => {
