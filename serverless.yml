@@ -73,7 +73,7 @@ stepFunctions:
             Next: waitForPeriodOfTime
           waitForPeriodOfTime:
             Type: Wait
-            Seconds: 600
+            Seconds: 172800
             Next: notifyWhenVotesCalculated
           notifyWhenVotesCalculated:
             Type: Task
