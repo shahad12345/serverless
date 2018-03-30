@@ -360,9 +360,10 @@ module.exports.notifyWhenVotesCalculated = (event, context, callback) => {
         },
         ExpressionAttributeValues: {
           ':status': statuses,
+          ':currentStatus': statuses[1].event,
           ':updatedAt': timestamp,
         },
-        UpdateExpression: 'SET statuses = list_append(statuses, :status), updatedAt = :updatedAt',
+        UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
         ReturnValues: 'ALL_NEW',
       };
 
@@ -393,6 +394,7 @@ module.exports.notifyWhenVotesCalculated = (event, context, callback) => {
           },
           Source: process.env.SENDER_EMAIL,
           ReplyToAddresses: [process.env.CONTACT_EMAIL]
+          CcAddresses: [process.env.CONTACT_EMAIL]
         };
         SES.sendEmail(emailParams, (error, response) => {
           return callback(null, {id: event.id});
