@@ -58,7 +58,7 @@ module.exports.contactUs = (event, context, callback) => {
   }
 
   const name = body ? body.name : null;
-  const email = body ? body.email : null;
+  var email = body ? body.email : null;
   const subject = body ? body.subject : null;
   const message = body ? body.message : null;
 
@@ -69,6 +69,9 @@ module.exports.contactUs = (event, context, callback) => {
   if (validateEmail(email) === false) {
     return callback(null, makeResponse(406));
   }
+
+  // Normalize the email.
+  email = email.toLowerCase();
 
   const emailParams = {
     Destination: {
@@ -476,6 +479,57 @@ module.exports.vote = (event, context, callback) => {
           ':updatedAt': timestamp,
         },
         UpdateExpression: 'SET statuses = list_append(statuses, :status), updatedAt = :updatedAt',
+        ReturnValues: 'ALL_NEW',
+      };
+
+      DynamoDB.update(params, (error, result) => {
+        return callback(null, makeResponse(error ? 408 : 204));
+      });
+    });
+  });
+};
+
+module.exports.accept = (event, context, callback) => {
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
+
+  const accessToken = body ? body.accessToken : null;
+  const traineeId = body ? body.traineeId : null;
+
+  if (!accessToken || !traineeId) {
+    return callback(null, makeResponse(400));
+  }
+
+  getContributorByAccessToken(accessToken, (contributor) => {
+    if (!contributor) return callback(null, makeResponse(401));
+    return getTraineeById(traineeId, (trainee) => {
+      if (!trainee) return callback(null, makeResponse(404));
+      const alreadyAccepted = trainee.statuses.find((status) => {
+        return status.event == 'accepted';
+      }) !== undefined;
+
+      // Check if the trainee already accepted.
+      if (alreadyAccepted) return callback(null, makeResponse(409));
+
+      const timestamp = new Date().getTime();
+      const params = {
+        TableName: 'trainees',
+        Key: {
+          id: trainee.id,
+        },
+        ExpressionAttributeValues: {
+          ':status': [{
+            event: 'accepted',
+            createdAt: timestamp,
+            createdBy: contributor.id,
+          }],
+          ':currentStatus': 'accepted',
+          ':updatedAt': timestamp,
+        },
+        UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
         ReturnValues: 'ALL_NEW',
       };
 

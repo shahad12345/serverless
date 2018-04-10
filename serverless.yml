@@ -51,6 +51,13 @@ functions:
           path: vote
           method: post
           cors: true
+  accept:
+    handler: handler.accept
+    events:
+      - http:
+          path: accept
+          method: post
+          cors: true
   # test:
   #   handler: handler.test
   #   events:
