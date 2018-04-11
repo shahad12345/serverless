@@ -58,6 +58,13 @@ functions:
           path: accept
           method: post
           cors: true
+  listTrainees:
+    handler: handler.listTrainees
+    events:
+      - http:
+          path: trainees
+          method: get
+          cors: true
   # test:
   #   handler: handler.test
   #   events:

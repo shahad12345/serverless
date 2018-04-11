@@ -10,12 +10,13 @@ const StepFunctions = new AWS.StepFunctions();
 // Constants.
 const program = 'summer-2018';
 
-function makeResponse(statusCode) {
+function makeResponse(statusCode, body) {
   return {
     statusCode: statusCode,
     headers: {
       'Access-Control-Allow-Origin': '*',
     },
+    body: body ? JSON.stringify(body) : null,
   };
 }
 
@@ -241,6 +242,15 @@ const listContributors = (contributors) => {
     };
     DynamoDB.scan(scanParams, (error, result) => {
       return contributors(result.Items);
+    });
+};
+
+const listTrainees = (trainees) => {
+    const scanParams = {
+      TableName: 'trainees',
+    };
+    DynamoDB.scan(scanParams, (error, result) => {
+      return trainees(result.Items);
     });
 };
 
@@ -536,6 +546,27 @@ module.exports.accept = (event, context, callback) => {
       DynamoDB.update(params, (error, result) => {
         return callback(null, makeResponse(error ? 408 : 204));
       });
+    });
+  });
+};
+
+module.exports.listTrainees = (event, context, callback) => {
+
+  const headers = event.headers ? event.headers : null;
+  var accessToken = headers ? headers.Authorization : null;
+
+  if (accessToken) {
+    accessToken = accessToken.replace('Bearer ', '');
+  }
+
+  if (!accessToken) {
+    return callback(null, makeResponse(400));
+  }
+
+  getContributorByAccessToken(accessToken, (contributor) => {
+    if (!contributor) return callback(null, makeResponse(401));
+    return listTrainees((trainees) => {
+      return callback(null, makeResponse(200, trainees));
     });
   });
 };
