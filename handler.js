@@ -351,10 +351,11 @@ module.exports.notifyWhenVotesCalculated = (event, context, callback) => {
         downVotes: downVotes,
         contributors: contributors.length,
         upVotesPercentage: calculateUpVotesPercentage(upVotes, downVotes, contributors.length),
+        votesDifference: (upVotes-downVotes),
         createdAt: timestamp,
       }];
 
-      if (statuses[0].upVotesPercentage >= 60) {
+      if (statuses[0].votesDifference > 0) {
         statuses.push({
           event: 'initiallyAccepted',
           createdAt: timestamp,
