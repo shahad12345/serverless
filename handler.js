@@ -1,11 +1,17 @@
 'use strict';
 
+const AuthenticationClient = require('auth0').AuthenticationClient;
+
 // Libraries.
 const uuid = require('uuid');
 const AWS = require('aws-sdk');
 const SES = new AWS.SES();
 const DynamoDB = new AWS.DynamoDB.DocumentClient();
 const StepFunctions = new AWS.StepFunctions();
+const auth0 = new AuthenticationClient({
+  domain: process.env.AUTH0_DOMAIN,
+  clientId: process.env.AUTH0_CLIENT_ID
+});
 
 // Constants.
 const program = 'summer-2018';
@@ -152,7 +158,7 @@ module.exports.apply = (event, context, callback) => {
   const timestamp = new Date().getTime();
   const fullname = body ? body.fullname : null;
   var gender = body ? body.gender : null;
-  const email = body ? body.email : null;
+  var email = body ? body.email : null;
   const mobile = body ? body.mobile : null;
   const university = body ? body.university : null;
   const major = body ? body.major : null;
@@ -169,6 +175,8 @@ module.exports.apply = (event, context, callback) => {
   if (validateEmail(email) === false || validateMobile(mobile) == false || validateDate(expectedGraduationDate) == false || validateYoutubeVideoUrl(youtubeVideoUrl) == false) {
     return callback(null, makeResponse(406));
   }
+
+  email = email.toLowerCase();
 
   const checkIfTraineeAlreadyExists = (callback) => {
     const scanParams = {
@@ -500,6 +508,49 @@ module.exports.vote = (event, context, callback) => {
   });
 };
 
+function accept(accessToken, traineeId) {
+  if (!accessToken || !traineeId) {
+    throw new Error('ValidationError');
+  }
+
+  getContributorByAccessToken(accessToken, (contributor) => {
+    if (!contributor) throw new Error('NotAuthorizedError');
+    return getTraineeById(traineeId, (trainee) => {
+      if (!trainee) throw new Error('NotFoundError');
+      const alreadyAccepted = trainee.statuses.find((status) => {
+        return status.event == 'accepted';
+      }) !== undefined;
+
+      // Check if the trainee already accepted.
+      if (alreadyAccepted) throw new Error('ConflictError');
+
+      const timestamp = new Date().getTime();
+      const params = {
+        TableName: 'trainees',
+        Key: {
+          id: trainee.id,
+        },
+        ExpressionAttributeValues: {
+          ':status': [{
+            event: 'accepted',
+            createdAt: timestamp,
+            createdBy: contributor.id,
+          }],
+          ':currentStatus': 'accepted',
+          ':updatedAt': timestamp,
+        },
+        UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
+        ReturnValues: 'ALL_NEW',
+      };
+
+      DynamoDB.update(params, (error, result) => {
+        if (error) throw new Error('APIError');
+        return true;
+      });
+    });
+  });
+};
+
 module.exports.accept = (event, context, callback) => {
   try {
     var body = JSON.parse(event.body);
@@ -570,4 +621,76 @@ module.exports.listTrainees = (event, context, callback) => {
       return callback(null, makeResponse(200, trainees));
     });
   });
+};
+
+module.exports.test = (event, context, callback) => {
+
+  const headers = event.headers ? event.headers : null;
+  var accessToken = headers ? headers.Authorization : null;
+
+  if (accessToken) {
+    accessToken = accessToken.replace('Bearer ', '');
+  }
+
+  if (!accessToken) {
+    return callback(null, makeResponse(400));
+  }
+
+  return listTrainees((trainees) => {
+    var initiallyAccepted = trainees.filter((trainee) => {
+      return trainee.currentStatus == 'initiallyAccepted';
+    });
+    for (var i = initiallyAccepted.length - 1; i >= 0; i--) {
+      console.log('accepting', initiallyAccepted[i].fullname);
+      accept(accessToken, initiallyAccepted[i].id);
+    }
+  });
+};
+
+/**
+  * Returns an IAM policy document for a given user and resource.
+  *
+  * @method buildIAMPolicy
+  * @param {String} userId - user id
+  * @param {String} effect  - Allow / Deny
+  * @param {String} resource - resource ARN
+  * @param {String} context - response context
+  * @returns {Object} policyDocument
+  */
+const buildIAMPolicy = (userId, effect, resource, context) => {
+  const policy = {
+    principalId: userId,
+    policyDocument: {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Action: 'execute-api:Invoke',
+          Effect: effect,
+          Resource: resource,
+        },
+      ],
+    },
+    context,
+  };
+  return policy;
+};
+
+module.exports.auth = async (event, context, callback) => {
+  var accessToken = event.authorizationToken ? event.authorizationToken : null;
+  if (accessToken) {
+    accessToken = accessToken.replace('Bearer ', '');
+  }
+  if (!accessToken) return callback('Unauthorized');
+  const user = await auth0.users.getInfo(accessToken, (error, user) => {
+    if (error || user == 'Unauthorized') return callback('Unauthorized');
+    const authorizerContext = { user: JSON.stringify(user) };
+    const policy = buildIAMPolicy(user.sub, 'Allow', event.methodArn, authorizerContext);
+    return callback(null, policy);
+  });
+};
+
+module.exports.private = (event, context, callback) => {
+  console.log('event', event);
+  console.log('private is called.');
+  callback(null, makeResponse(200));
 };

@@ -5,11 +5,13 @@ plugins:
   - serverless-pseudo-parameters
 provider:
   name: aws
-  runtime: nodejs6.10
+  runtime: nodejs8.10
   region: eu-west-1
   environment:
     SENDER_EMAIL: ${env:SENDER_EMAIL}
     CONTACT_EMAIL: ${env:CONTACT_EMAIL}
+    AUTH0_CLIENT_ID: ${env:AUTH0_CLIENT_ID}
+    AUTH0_CLIENT_SECRET: ${env:AUTH0_CLIENT_SECRET}
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -24,6 +26,16 @@ provider:
         - states:StartExecution
       Resource: '*'
 functions:
+  auth:
+    handler: handler.auth
+  private:
+    handler: handler.private
+    events:
+      - http:
+          path: private
+          method: get
+          cors: true
+          authorizer: auth
   contactUs:
     handler: handler.contactUs
     events:
@@ -65,13 +77,13 @@ functions:
           path: trainees
           method: get
           cors: true
-  # test:
-  #   handler: handler.test
-  #   events:
-  #     - http:
-  #         path: test
-  #         method: get
-  #         cors: true
+  test:
+    handler: handler.test
+    events:
+      - http:
+          path: test
+          method: get
+          cors: true
 
 stepFunctions:
   stateMachines:
