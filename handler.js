@@ -603,39 +603,12 @@ module.exports.accept = (event, context, callback) => {
 };
 
 module.exports.listTrainees = (event, context, callback) => {
-
-  const headers = event.headers ? event.headers : null;
-  var accessToken = headers ? headers.Authorization : null;
-
-  if (accessToken) {
-    accessToken = accessToken.replace('Bearer ', '');
-  }
-
-  if (!accessToken) {
-    return callback(null, makeResponse(400));
-  }
-
-  getContributorByAccessToken(accessToken, (contributor) => {
-    if (!contributor) return callback(null, makeResponse(401));
-    return listTrainees((trainees) => {
-      return callback(null, makeResponse(200, trainees));
-    });
+  return listTrainees((trainees) => {
+    return callback(null, makeResponse(200, trainees));
   });
 };
 
 module.exports.test = (event, context, callback) => {
-
-  const headers = event.headers ? event.headers : null;
-  var accessToken = headers ? headers.Authorization : null;
-
-  if (accessToken) {
-    accessToken = accessToken.replace('Bearer ', '');
-  }
-
-  if (!accessToken) {
-    return callback(null, makeResponse(400));
-  }
-
   return listTrainees((trainees) => {
     var initiallyAccepted = trainees.filter((trainee) => {
       return trainee.currentStatus == 'initiallyAccepted';
@@ -675,17 +648,33 @@ const buildIAMPolicy = (userId, effect, resource, context) => {
   return policy;
 };
 
-module.exports.auth = async (event, context, callback) => {
+  const getUserByEmail = (email, callback) => {
+    const scanParams = {
+      TableName: 'contributors',
+      FilterExpression: 'attribute_not_exists(deletedAt) and email = :email',
+      ExpressionAttributeValues: {
+        ':email' : email,
+      },
+    };
+    DynamoDB.scan(scanParams, (error, result) => {
+      return (error || result.Count > 0) ? callback(result) : callback(null);
+    });
+  };
+
+module.exports.auth = (event, context, callback) => {
   var accessToken = event.authorizationToken ? event.authorizationToken : null;
   if (accessToken) {
     accessToken = accessToken.replace('Bearer ', '');
   }
   if (!accessToken) return callback('Unauthorized');
-  const user = await auth0.users.getInfo(accessToken, (error, user) => {
+  const user = auth0.users.getInfo(accessToken, (error, user) => {
     if (error || user == 'Unauthorized') return callback('Unauthorized');
-    const authorizerContext = { user: JSON.stringify(user) };
-    const policy = buildIAMPolicy(user.sub, 'Allow', event.methodArn, authorizerContext);
-    return callback(null, policy);
+    getUserByEmail(user.email, (foundUser) => {
+      if (!foundUser) return callback('Unauthorized');
+      const authorizerContext = { user: foundUser };
+      const policy = buildIAMPolicy(user.sub, 'Allow', event.methodArn, authorizerContext);
+      return callback(null, policy);
+    });
   });
 };
 

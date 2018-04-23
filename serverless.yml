@@ -77,6 +77,7 @@ functions:
           path: trainees
           method: get
           cors: true
+          authorizer: auth
   test:
     handler: handler.test
     events:
@@ -84,6 +85,7 @@ functions:
           path: test
           method: get
           cors: true
+          authorizer: auth
 
 stepFunctions:
   stateMachines:
