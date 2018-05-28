@@ -1,0 +1,45 @@
+
+  createIndividualTask
+  tasks
+    id:
+    created_by:
+    assigned_to:
+    media/image/video:
+    track:
+    feedback:
+    title:
+    description:
+    references:
+    [
+      title:
+      url:
+    ],
+    hours:
+    statuses: [],
+    currentStatus:
+    created_at:
+    modified_at:
+
+
+  createIndividualTask:
+    Fill a form
+    Submit
+    each trainee will recieve an email
+      Title: New task: Version controll!
+      Body:
+        Dear Ahmad Khalid,
+
+        <img />
+
+        You have a new task waiting for your creativity. The task requests you to build a Github organization. new task organization for your requests. You have a new to Version controll. If you done the task right, you will grant Linux, Bash, and Command Line skills. The task has to be deliverd with 4 hours.
+
+        References:
+
+        - Ref1 (https://www.google.com/refs/1).
+        - Ref2 (https://www.google.com/refs/2).
+
+        In case you wanted to deliver the task, kindly visit the following URL:
+        https://www.google.com/tasks/2135-3123-4121-1323-1323
+
+        
+

@@ -8,6 +8,7 @@ const AWS = require('aws-sdk');
 const SES = new AWS.SES();
 const DynamoDB = new AWS.DynamoDB.DocumentClient();
 const StepFunctions = new AWS.StepFunctions();
+const Lambda = new AWS.Lambda();
 const auth0 = new AuthenticationClient({
   domain: process.env.AUTH0_DOMAIN,
   clientId: process.env.AUTH0_CLIENT_ID
@@ -15,6 +16,7 @@ const auth0 = new AuthenticationClient({
 
 // Constants.
 const program = 'summer-2018';
+const MAX_SEND_EMAILS = 1;
 
 function makeResponse(statusCode, body) {
   return {
@@ -230,7 +232,6 @@ module.exports.apply = (event, context, callback) => {
     if (exists) return callback(null, makeResponse(409));
     addTrainee((cannotAdd) => {
       if (cannotAdd) return callback(null, makeResponse(408));
-      // console.log(process.env.AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN);
       StepFunctions.startExecution({
         stateMachineArn: process.env.AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN,
         input: JSON.stringify({
@@ -239,7 +240,7 @@ module.exports.apply = (event, context, callback) => {
       }, (error) => {
         console.log('error', error);
         return callback(null, makeResponse(204));
-      })
+      });
     });
   });
 };
@@ -508,45 +509,41 @@ module.exports.vote = (event, context, callback) => {
   });
 };
 
-function accept(accessToken, traineeId) {
-  if (!accessToken || !traineeId) {
+function accept(traineeId) {
+  if (!traineeId) {
     throw new Error('ValidationError');
   }
 
-  getContributorByAccessToken(accessToken, (contributor) => {
-    if (!contributor) throw new Error('NotAuthorizedError');
-    return getTraineeById(traineeId, (trainee) => {
-      if (!trainee) throw new Error('NotFoundError');
-      const alreadyAccepted = trainee.statuses.find((status) => {
-        return status.event == 'accepted';
-      }) !== undefined;
+  return getTraineeById(traineeId, (trainee) => {
+    if (!trainee) throw new Error('NotFoundError');
+    const alreadyAccepted = trainee.statuses.find((status) => {
+      return status.event == 'accepted';
+    }) !== undefined;
 
-      // Check if the trainee already accepted.
-      if (alreadyAccepted) throw new Error('ConflictError');
+    // Check if the trainee already accepted.
+    if (alreadyAccepted) throw new Error('ConflictError');
 
-      const timestamp = new Date().getTime();
-      const params = {
-        TableName: 'trainees',
-        Key: {
-          id: trainee.id,
-        },
-        ExpressionAttributeValues: {
-          ':status': [{
-            event: 'accepted',
-            createdAt: timestamp,
-            createdBy: contributor.id,
-          }],
-          ':currentStatus': 'accepted',
-          ':updatedAt': timestamp,
-        },
-        UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
-        ReturnValues: 'ALL_NEW',
-      };
+    const timestamp = new Date().getTime();
+    const params = {
+      TableName: 'trainees',
+      Key: {
+        id: trainee.id,
+      },
+      ExpressionAttributeValues: {
+        ':status': [{
+          event: 'accepted',
+          createdAt: timestamp,
+        }],
+        ':currentStatus': 'accepted',
+        ':updatedAt': timestamp,
+      },
+      UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
+      ReturnValues: 'ALL_NEW',
+    };
 
-      DynamoDB.update(params, (error, result) => {
-        if (error) throw new Error('APIError');
-        return true;
-      });
+    DynamoDB.update(params, (error, result) => {
+      if (error) throw new Error('APIError');
+      return true;
     });
   });
 };
@@ -615,7 +612,7 @@ module.exports.test = (event, context, callback) => {
     });
     for (var i = initiallyAccepted.length - 1; i >= 0; i--) {
       console.log('accepting', initiallyAccepted[i].fullname);
-      accept(accessToken, initiallyAccepted[i].id);
+      accept(initiallyAccepted[i].id);
     }
   });
 };
@@ -633,6 +630,7 @@ module.exports.test = (event, context, callback) => {
 const buildIAMPolicy = (userId, effect, resource, context) => {
   const policy = {
     principalId: userId,
+    context,
     policyDocument: {
       Version: '2012-10-17',
       Statement: [
@@ -643,7 +641,7 @@ const buildIAMPolicy = (userId, effect, resource, context) => {
         },
       ],
     },
-    context,
+    // context,
   };
   return policy;
 };
@@ -657,7 +655,7 @@ const buildIAMPolicy = (userId, effect, resource, context) => {
       },
     };
     DynamoDB.scan(scanParams, (error, result) => {
-      return (error || result.Count > 0) ? callback(result) : callback(null);
+      return (error || result.Count > 0) ? callback(result.Items[0]) : callback(null);
     });
   };
 
@@ -666,14 +664,30 @@ module.exports.auth = (event, context, callback) => {
   if (accessToken) {
     accessToken = accessToken.replace('Bearer ', '');
   }
-  if (!accessToken) return callback('Unauthorized');
+  if (!accessToken) {
+    console.log('Unauthorized');
+    return callback('Unauthorized');
+  }
+  console.log('accessToken', accessToken);
   const user = auth0.users.getInfo(accessToken, (error, user) => {
-    if (error || user == 'Unauthorized') return callback('Unauthorized');
+    if (error || user == 'Unauthorized') {
+      console.log('Unauthorized2');
+      return callback('Unauthorized');
+    }
     getUserByEmail(user.email, (foundUser) => {
-      if (!foundUser) return callback('Unauthorized');
-      const authorizerContext = { user: foundUser };
-      const policy = buildIAMPolicy(user.sub, 'Allow', event.methodArn, authorizerContext);
-      return callback(null, policy);
+      if (!foundUser) {
+        console.log('Unauthorized3');
+        return callback('Unauthorized');
+      }
+      // const authorizerContext = { user: foundUser };
+      const policy = buildIAMPolicy(user.sub, 'Allow', event.methodArn, foundUser);
+      // console.log('foundUser');
+      try {
+        console.log(JSON.stringify(policy));
+        callback(null, policy);
+      } catch (e) {
+        console.log('error', e);
+      }
     });
   });
 };
@@ -683,3 +697,69 @@ module.exports.private = (event, context, callback) => {
   console.log('private is called.');
   callback(null, makeResponse(200));
 };
+
+module.exports.sendEmailToAll = (event, context, callback) => {
+  console.log('event', event);
+  console.log('sendEmailToAll is called.');
+  const params = {
+    FunctionName: process.env.SEND_EMAIL_LAMBDA_ARN,
+    InvocationType: 'RequestResponse',
+    Payload: JSON.stringify({
+      to: ['hossamzee@gmail.com'],
+      subject: 'hello',
+      message: 'message (ignore)',
+    }),
+  };
+  Lambda.invoke(params, function(error, data) {
+    return callback(null, makeResponse(error ? 408 : 204));
+  });
+};
+
+module.exports.sendEmail = (event, context, callback) => {
+
+  const to = event.to;
+  const subject = event.subject;
+  const message = event.message;
+  const chunks = chunkArray(to, MAX_SEND_EMAILS);
+
+  Promise.all(chunks.map((chunk) => {
+    console.log('chunk', chunk);
+    const emailParams = {
+      Destination: {
+        ToAddresses: chunk,
+      },
+      Message: {
+        Body: {
+          Text: {
+            Data: message,
+            Charset: 'utf-8'
+          }
+        },
+        Subject: {
+          Data: subject,
+          Charset: 'utf-8'
+        }
+      },
+      Source: process.env.SENDER_EMAIL,
+      ReplyToAddresses: [process.env.CONTACT_EMAIL]
+    };
+    return SES.sendEmail(emailParams).promise();
+  })).then((success) => {
+    return callback(null, success);
+  }).catch((error) => {
+    return callback(error);
+  });
+}
+
+function chunkArray(myArray, chunk_size){
+    var index = 0;
+    var arrayLength = myArray.length;
+    var tempArray = [];
+    
+    for (index = 0; index < arrayLength; index += chunk_size) {
+      var myChunk = myArray.slice(index, index+chunk_size);
+      // Do something if you want with the group
+      tempArray.push(myChunk);
+    }
+    return tempArray;
+}

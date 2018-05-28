@@ -7,11 +7,12 @@ provider:
   name: aws
   runtime: nodejs8.10
   region: eu-west-1
+  stage: dev
   environment:
     SENDER_EMAIL: ${env:SENDER_EMAIL}
     CONTACT_EMAIL: ${env:CONTACT_EMAIL}
+    AUTH0_DOMAIN: ${env:AUTH0_DOMAIN}
     AUTH0_CLIENT_ID: ${env:AUTH0_CLIENT_ID}
-    AUTH0_CLIENT_SECRET: ${env:AUTH0_CLIENT_SECRET}
   iamRoleStatements:
     - Effect: Allow
       Action:
@@ -24,6 +25,8 @@ provider:
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
         - states:StartExecution
+        - lambda:*
+        - execute-api:*
       Resource: '*'
 functions:
   auth:
@@ -35,7 +38,18 @@ functions:
           path: private
           method: get
           cors: true
-          authorizer: auth
+          authorizer: ${self:custom.authorizer.users}
+  sendEmailToAll:
+    handler: handler.sendEmailToAll
+    events:
+      - http:
+          path: emails
+          method: post
+          cors: true
+          # authorizer: ${self:custom.authorizer.users}
+    environment:
+      SEND_EMAIL_LAMBDA_ARN: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${self:provider.stage}-sendEmail"
+      # arn:aws:lambda:eu-west-1:510712368144:function:cloudsystems-serverless-dev-sendEmail
   contactUs:
     handler: handler.contactUs
     events:
@@ -85,10 +99,24 @@ functions:
           path: test
           method: get
           cors: true
-          authorizer: auth
+          # authorizer: auth
+  sendEmail:
+    handler: handler.sendEmail
+    # environment:
+    #   SEND_EMAIL_STATE_MACHINE_ARN: "arn:aws:states:#{AWS::Region}:#{AWS::AccountId}:stateMachine:sendEmailStateMachine"
 
 stepFunctions:
   stateMachines:
+    # sendEmailStateMachine:
+    #   name: sendEmailStateMachine
+    #   definition:
+    #     Comment: A state machine happens when there is a need to send an email.
+    #     StartAt: sendEmail
+    #     States:
+    #       sendEmail:
+    #         Type: Task
+    #         Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-sendEmail"
+    #         End: true
     afterTraineeAppliesStateMachine:
       name: afterTraineeAppliesStateMachine
       definition:
@@ -148,3 +176,11 @@ resources:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
         TableName: contributors
+custom:
+  # stage: ${opt:stage}
+  authorizer:
+    users:
+      name: auth
+      type: TOKEN
+      identitySource: method.request.header.Authorization
+      identityValidationExpression: Bearer (.*)
