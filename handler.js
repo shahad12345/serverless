@@ -16,7 +16,7 @@ const auth0 = new AuthenticationClient({
 
 // Constants.
 const program = 'summer-2018';
-const MAX_SEND_EMAILS = 1;
+const MAX_SEND_EMAILS = 50;
 
 function makeResponse(statusCode, body) {
   return {
@@ -701,17 +701,53 @@ module.exports.private = (event, context, callback) => {
 module.exports.sendEmailToAll = (event, context, callback) => {
   console.log('event', event);
   console.log('sendEmailToAll is called.');
-  const params = {
-    FunctionName: process.env.SEND_EMAIL_LAMBDA_ARN,
-    InvocationType: 'RequestResponse',
-    Payload: JSON.stringify({
-      to: ['hossamzee@gmail.com'],
-      subject: 'hello',
-      message: 'message (ignore)',
-    }),
-  };
-  Lambda.invoke(params, function(error, data) {
-    return callback(null, makeResponse(error ? 408 : 204));
+
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
+
+  const subject = body ? body.subject : null;
+  const message = body ? body.message : null;
+  var to = [];
+
+  if (!subject || !message) {
+    return callback(null, makeResponse(400));
+  }
+
+  listContributors((contributors) => {
+    const contributorEmails = contributors.map((contributor) => {
+      return contributor.email;
+    });
+    // console.log(contributorEmails.length);
+    listTrainees((trainees) => {
+        // console.log(trainees);
+        const traineeEmails = trainees.reduce((filtered, trainee) => {
+          if (trainee.currentStatus == 'accepted') {
+            filtered.push(trainee.email);
+          }
+          return filtered;
+        }, []);
+
+        // TODO:
+        to = contributorEmails;
+
+        const params = {
+          FunctionName: process.env.SEND_EMAIL_LAMBDA_ARN,
+          InvocationType: 'RequestResponse',
+          Payload: JSON.stringify({
+            to: to,
+            subject: subject,
+            message: message,
+          }),
+        };
+
+        Lambda.invoke(params, function(error, data) {
+          console.log(error);
+          return callback(null, makeResponse(error ? 408 : 204));
+        });
+    });
   });
 };
 
