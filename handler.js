@@ -710,11 +710,13 @@ module.exports.sendEmailToAll = (event, context, callback) => {
 
   const subject = body ? body.subject : null;
   const message = body ? body.message : null;
-  var to = [];
+  const to = body ? body.to : null;
 
-  if (!subject || !message) {
+  if (!subject || !message || !to) {
     return callback(null, makeResponse(400));
   }
+
+  console.log('to', to);
 
   listContributors((contributors) => {
     const contributorEmails = contributors.map((contributor) => {
@@ -731,13 +733,23 @@ module.exports.sendEmailToAll = (event, context, callback) => {
         }, []);
 
         // TODO:
-        to = contributorEmails;
+        var recipients = [];
+
+        if (to.indexOf('contributors') > -1) {
+          console.log('found contributors', contributorEmails);
+          recipients = recipients.concat(contributorEmails);
+        }
+
+        if (to.indexOf('trainees') > -1) {
+          console.log('found trainees', traineeEmails);
+          recipients = recipients.concat(traineeEmails);
+        }
 
         const params = {
           FunctionName: process.env.SEND_EMAIL_LAMBDA_ARN,
           InvocationType: 'RequestResponse',
           Payload: JSON.stringify({
-            to: to,
+            to: recipients,
             subject: subject,
             message: message,
           }),
@@ -762,11 +774,11 @@ module.exports.sendEmail = (event, context, callback) => {
     console.log('chunk', chunk);
     const emailParams = {
       Destination: {
-        ToAddresses: chunk,
+        BccAddresses: chunk,
       },
       Message: {
         Body: {
-          Text: {
+          Html: {
             Data: message,
             Charset: 'utf-8'
           }
