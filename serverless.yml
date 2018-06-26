@@ -29,16 +29,18 @@ provider:
         - execute-api:*
       Resource: '*'
 functions:
-  auth:
-    handler: handler.auth
-  private:
-    handler: handler.private
-    events:
-      - http:
-          path: private
-          method: get
-          cors: true
-          authorizer: ${self:custom.authorizer.users}
+  authContributor:
+    handler: handler.authContributor
+  authTrainee:
+    handler: handler.authTrainee
+  # private:
+  #   handler: handler.private
+  #   events:
+  #     - http:
+  #         path: private
+  #         method: get
+  #         cors: true
+  #         authorizer: ${self:custom.authorizer.users}
   sendEmailToAll:
     handler: handler.sendEmailToAll
     events:
@@ -91,32 +93,70 @@ functions:
           path: trainees
           method: get
           cors: true
-          authorizer: auth
-  test:
-    handler: handler.test
-    events:
-      - http:
-          path: test
-          method: get
-          cors: true
-          # authorizer: auth
+          authorizer: authContributor
+  # test:
+  #   handler: handler.test
+  #   events:
+  #     - http:
+  #         path: test
+  #         method: get
+  #         cors: true
+  #         # authorizer: auth
   sendEmail:
     handler: handler.sendEmail
     # environment:
     #   SEND_EMAIL_STATE_MACHINE_ARN: "arn:aws:states:#{AWS::Region}:#{AWS::AccountId}:stateMachine:sendEmailStateMachine"
+  createIndividualTask:
+    handler: handler.createIndividualTask
+    events:
+      - http:
+          path: individual-tasks
+          method: post
+          cors: true
+          authorizer: authContributor
+    environment:
+      AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN: "arn:aws:states:#{AWS::Region}:#{AWS::AccountId}:stateMachine:afterIndividualTaskCreatedStateMachine"
+  notifyWhenIndividualTaskCreated:
+    handler: handler.notifyWhenIndividualTaskCreated
+  notifyWhenIndividualTaskExpired:
+    handler: handler.notifyWhenIndividualTaskExpired
+  # TODO: deliver.
+  deliverIndividualTask:
+    handler: handler.deliverIndividualTask
+    events:
+      - http:
+          path: individual-tasks/deliver
+          method: post
+          cors: true
+          authorizer: authTrainee
+  # TODO: correct.
+  correctIndividualTask:
+    handler: handler.correctIndividualTask
+    events:
+      - http:
+          path: individual-tasks/correct
+          method: post
+          cors: true
+          authorizer: authContributor
+  authTraineeInfo:
+    handler: handler.authTraineeInfo
+    events:
+      - http:
+          path: auth/trainees
+          method: get
+          cors: true
+          authorizer: authTrainee
+  authContributorInfo:
+    handler: handler.authContributorInfo
+    events:
+      - http:
+          path: auth/contributors
+          method: get
+          cors: true
+          authorizer: authContributor
 
 stepFunctions:
   stateMachines:
-    # sendEmailStateMachine:
-    #   name: sendEmailStateMachine
-    #   definition:
-    #     Comment: A state machine happens when there is a need to send an email.
-    #     StartAt: sendEmail
-    #     States:
-    #       sendEmail:
-    #         Type: Task
-    #         Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-sendEmail"
-    #         End: true
     afterTraineeAppliesStateMachine:
       name: afterTraineeAppliesStateMachine
       definition:
@@ -135,6 +175,24 @@ stepFunctions:
             Type: Task
             Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyWhenVotesCalculated"
             End: true
+    afterIndividualTaskCreatedStateMachine:
+      name: afterIndividualTaskCreatedStateMachine
+      definition:
+        Comment: A state machine happens after an individual task is created.
+        StartAt: notifyWhenIndividualTaskCreated
+        States:
+          notifyWhenIndividualTaskCreated:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyWhenIndividualTaskCreated"
+            Next: waitUntilExpiry
+          waitUntilExpiry:
+            Type: Wait
+            SecondsPath: "$.expiresAfterInSeconds"
+            Next: notifyWhenIndividualTaskExpired
+          notifyWhenIndividualTaskExpired:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyWhenIndividualTaskExpired"
+            End: true
   # test:
   #   handler: handler.test
   #   events:
@@ -144,6 +202,16 @@ stepFunctions:
   #         cors: true
 resources:
   Resources:
+    GatewayResponseDefault4XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: 'ApiGatewayRestApi'
     TraineesDynamoDBTable:
       Type: AWS::DynamoDB::Table
       DeletionPolicy: Retain
@@ -176,6 +244,22 @@ resources:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
         TableName: contributors
+    IndividualTasksDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        TableName: individualTasks
 custom:
   # stage: ${opt:stage}
   authorizer:
@@ -184,3 +268,4 @@ custom:
       type: TOKEN
       identitySource: method.request.header.Authorization
       identityValidationExpression: Bearer (.*)
+

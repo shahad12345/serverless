@@ -235,7 +235,7 @@ module.exports.apply = (event, context, callback) => {
       StepFunctions.startExecution({
         stateMachineArn: process.env.AFTER_TRAINEE_APPLIES_STATE_MACHINE_ARN,
         input: JSON.stringify({
-            id: id,
+          id: id,
         }),
       }, (error) => {
         console.log('error', error);
@@ -261,6 +261,26 @@ const listTrainees = (trainees) => {
     DynamoDB.scan(scanParams, (error, result) => {
       return trainees(result.Items);
     });
+};
+
+const getMentors = (emails, mentors) => {
+  var emailObject = {};
+  var index = 0;
+  emails.forEach(function(value) {
+      index++;
+      var emailKey = ":emailvalue"+index;
+      emailObject[emailKey.toString()] = value;
+  });
+
+  const scanParams = {
+    TableName: 'contributors',
+    FilterExpression : 'email IN (' + Object.keys(emailObject).toString() + ')',
+    ExpressionAttributeValues : emailObject,
+  };
+  DynamoDB.scan(scanParams, (error, result) => {
+    console.log(error);
+    return mentors(result.Items);
+  });
 };
 
 const findTraineeAppliesTemplateOrCreate = (done) => {
@@ -454,6 +474,348 @@ const getTraineeById = (id, callback) => {
     });
 };
 
+const getIndividualTaskById = (id, callback) => {
+    const scanParams = {
+      TableName: 'individualTasks',
+      FilterExpression: 'id = :id',
+      ExpressionAttributeValues: {
+        ':id': id,
+      },
+    };
+    DynamoDB.scan(scanParams, (error, result) => {
+      return (error || result.Count == 0) ? callback(null) : callback(result.Items[0]);
+    });
+};
+
+module.exports.notifyWhenIndividualTaskCreated = (event, context, callback) => {
+  const id = event.id;
+  getIndividualTaskById(id, (individualTask) => {
+    if (!individualTask) return callback('TASK_CANNOT_BE_FOUND');
+    var subject = `مهمّة جديدة: ${individualTask.title}!`;
+    var feedback = (!individualTask.feedback || individualTask.feedback == '') ? '' : `${individualTask.feedback}<br /><br />`;
+    var references = '';
+
+    if (individualTask.references.length == 0) {
+      references = '';
+    } else {
+      references = 'المراجع:<br />';
+      for (var i = 0; i < individualTask.references.length; i++) {
+        references += `<br />- ${individualTask.references[i].title} (<a href="${individualTask.references[i].url}">${individualTask.references[i].url}</a>).`;
+      }
+      references += '<br /><br />';
+    }
+
+    var message = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />${feedback}مهمّة جديدة بانتظار إبداعاتِك ويجب تسليمها قبل مرور ${individualTask.expiresAfter} ساعة من الآن. ${individualTask.description}<br /><br />${references}في حال رغبت بتسليم المهمّة، تفضّل بزيارة الرابط:<br /><a href="https://cloudsystems.sa/deliver-individual-task?id=${individualTask.id}">https://cloudsystems.sa/deliver-individual-task?id=${individualTask.id}</a><br /><br />وفي حال احتجت لمساعدةٍ فلا تتوانى بالبحث عنها في قناة المسار ${individualTask.channel} في تطبيق Slack.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
+
+    // Send the message.
+    const emailParams = {
+      Destination: {
+        ToAddresses: [individualTask.assignedTo.email]
+      },
+      Message: {
+        Body: {
+          Html: {
+            Data: message,
+            Charset: 'utf-8'
+          }
+        },
+        Subject: {
+          Data: subject,
+          Charset: 'utf-8'
+        }
+      },
+      Source: process.env.SENDER_EMAIL,
+      ReplyToAddresses: [process.env.CONTACT_EMAIL],
+      // CcAddresses: [process.env.CONTACT_EMAIL],
+    };
+    SES.sendEmail(emailParams, (error, response) => {
+      const timestamp = new Date().getTime();
+      const params = {
+        TableName: 'individualTasks',
+        Key: {
+          id: id,
+        },
+        ExpressionAttributeValues: {
+          ':status': [{
+            event: 'sent',
+            createdAt: timestamp,
+          }],
+          ':updatedAt': timestamp,
+          ':currentStatus': 'sent',
+        },
+        UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
+        ReturnValues: 'ALL_NEW',
+      };
+
+      DynamoDB.update(params, (error, result) => {
+        return callback(null, {
+          id: id,
+          expiresAfterInSeconds: individualTask.expiresAfter*60, // TODO: In seconds.
+        });
+      });
+    });
+  });
+}
+
+module.exports.notifyWhenIndividualTaskExpired = (event, context, callback) => {
+  const id = event.id;
+  getIndividualTaskById(id, (individualTask) => {
+    // Check if the task is not delivered.
+    if (individualTask.currentStatus != 'sent') return callback('TASK_HAS_NOT_EXPIRED');
+    const assignedToSubject = `انتهت فترة تسليم المهمّة: ${individualTask.title}!`;
+    const assignedToMessage = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك بانتهاء فترة تسليم المهمّة: ${individualTask.title}؛ إذ لم تصل إلينا إجابتك على الرغم من مرور ${individualTask.expiresAfter} ساعة من إسناد المهمّة إليك. نرجو منك فيما تبقّى من مهامٍ أن تجتهد أكثر وتبادر بالتسليم قبل انتهاء الوقت. هذه الرسالة هي للإخطار فقط ولا تتطلّب منك الرد عليها أو اتّخاذ أيّ إجراء.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
+
+    // Send the message.
+    const emailParams = {
+      Destination: {
+        ToAddresses: [individualTask.assignedTo.email]
+      },
+      Message: {
+        Body: {
+          Html: {
+            Data: assignedToMessage,
+            Charset: 'utf-8'
+          }
+        },
+        Subject: {
+          Data: assignedToSubject,
+          Charset: 'utf-8'
+        }
+      },
+      Source: process.env.SENDER_EMAIL,
+      ReplyToAddresses: [process.env.CONTACT_EMAIL],
+      // CcAddresses: [process.env.CONTACT_EMAIL],
+    };
+    SES.sendEmail(emailParams, (error, response) => {
+
+      const timestamp = new Date().getTime();
+      const params = {
+        TableName: 'individualTasks',
+        Key: {
+          id: id,
+        },
+        ExpressionAttributeValues: {
+          ':status': [{
+            event: 'expired',
+            createdAt: timestamp,
+          }],
+          ':updatedAt': timestamp,
+          ':currentStatus': 'expired',
+        },
+        UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
+        ReturnValues: 'ALL_NEW',
+      };
+
+      DynamoDB.update(params, (error, result) => {
+        return callback(null, {
+          id: id,
+        });
+      });
+      // callback(null, 'ASSIGNED_TO_NOTIFIED');
+    });
+    // TODO: FEAT: Notify the mentors.
+  });
+}
+
+module.exports.deliverIndividualTask = (event, context, callback) => {
+  const authorizer = event.requestContext.authorizer;
+
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
+
+  const id = body ? body.id : null;
+  const timestamp = new Date().getTime();
+  const answersString = body ? body.answers : null;
+
+  if (!answersString || !id) {
+    return callback(null, makeResponse(400));
+  }
+
+  // Make some variables.
+  const answers = parseReferences(answersString);
+
+  if (answers.length == 0) {
+    return callback(null, makeResponse(400));
+  }
+
+  var answersHTML = '';
+
+  for (var i = 0; i < answers.length; i++) {
+    answersHTML += `<br />- ${answers[i].title} (<a href="${answers[i].url}">${answers[i].url}</a>).`;
+  }
+
+  getIndividualTaskById(id, (individualTask) => {
+    // Check if the task does not exist.
+    if (!individualTask) return callback(null, makeResponse(400));
+    // Check if the task is already delivered. 409
+    if (individualTask.currentStatus == 'delivered') return callback(null, makeResponse(409));
+    // Check if the user is not authorized. 403
+    if (individualTask.assignedTo.id != authorizer.id) return callback(null, makeResponse(403));
+    // Check if the task has expired.
+    if (individualTask.currentStatus == 'expired') return callback(null, makeResponse(408));
+
+    const acceptUrl = `https://cloudsystems.sa/correct-individual-task?id=${id}&action=accept`;
+    const rejectUrl = `https://cloudsystems.sa/correct-individual-task?id=${id}&action=reject`;
+
+    const params = {
+      TableName: 'individualTasks',
+      Key: {
+        id: id,
+      },
+      ExpressionAttributeValues: {
+        ':status': [{
+          event: 'delivered',
+          createdAt: timestamp,
+        }],
+        ':updatedAt': timestamp,
+        ':currentStatus': 'delivered',
+        ':answers': answers,
+      },
+      UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, answers = :answers, updatedAt = :updatedAt',
+      ReturnValues: 'ALL_NEW',
+    };
+
+    DynamoDB.update(params, (error, result) => {
+      Promise.all(individualTask.mentors.map((mentor) => {
+        const emailParams = {
+          Destination: {
+            // BccAddresses: chunk,
+            ToAddresses: [mentor.email],
+          },
+          Message: {
+            Body: {
+              Html: {
+                Data: `<div style="direction: rtl"><br />${mentor.fullname}، السلام عليكم.<br /><br />يسرّنا إبلاغك بأنّ ${individualTask.assignedTo.fullname} قد قام بتسليم المهمّة: ${individualTask.title}، وفي ما يلي الروابط التي زوّدنا بها:<br />${answersHTML}<br /><br />إذا كنت ترى بأنّ تنفيذ المهمّة كان على أكمل وجهٍ، فانقر على الرابط التالي لقبولها:<br />${acceptUrl}<br /><br />وإذا كنت ترى بأنّ تنفيذ المهمّة لم يكن بالشكل المطلوب، فانقر على الرابط التالي لرفضها:<br />${rejectUrl}<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`,
+                Charset: 'utf-8'
+              }
+            },
+            Subject: {
+              Data: `${individualTask.assignedTo.fullname} سلّم المهمّة: ${individualTask.title}!`,
+              Charset: 'utf-8'
+            }
+          },
+          Source: process.env.SENDER_EMAIL,
+          ReplyToAddresses: [process.env.CONTACT_EMAIL]
+        };
+        return SES.sendEmail(emailParams).promise();
+      })).then((success) => {
+        callback(null, makeResponse(204));
+      }).catch((error) => {
+        console.log('error', error);
+        callback(null, makeResponse(410));
+      });
+    });
+  });
+}
+
+module.exports.correctIndividualTask = (event, context, callback) => {
+  const authorizer = event.requestContext.authorizer;
+
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
+
+  const id = body ? body.id : null;
+  const timestamp = new Date().getTime();
+  var action = body ? body.action : null;
+
+  if (!id || !action) {
+    return callback(null, makeResponse(400));
+  }
+
+  action = (action == 'accept') ? 'accept' : 'reject';
+
+  getIndividualTaskById(id, (individualTask) => {
+    // Check if the task does not exist.
+    if (!individualTask) return callback(null, makeResponse(400));
+    // Check if the task is already corrected. 409
+    if (individualTask.currentStatus == 'accepted' || individualTask.currentStatus == 'rejected') return callback(null, makeResponse(409));
+    // Check if the user is not authorized (not among the mentors). 403
+    const mentorIds = individualTask.mentors.map((mentor) => {
+      return mentor.id;
+    });
+    if (mentorIds.indexOf(authorizer.id) < 0) return callback(null, makeResponse(403));
+    // Check if the task has expired.
+    if (individualTask.currentStatus == 'expired') return callback(null, makeResponse(408));
+    if (individualTask.currentStatus != 'delivered') return callback(null, makeResponse(406));
+
+    const params = {
+      TableName: 'individualTasks',
+      Key: {
+        id: id,
+      },
+      ExpressionAttributeValues: {
+        ':status': [{
+          event: `${action}ed`,
+          createdAt: timestamp,
+          createdBy: authorizer.id,
+        }],
+        ':updatedAt': timestamp,
+        ':currentStatus': `${action}ed`,
+      },
+      UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
+      ReturnValues: 'ALL_NEW',
+    };
+
+    var subject = (action == 'accept') ? `رائع! تم قبول إجابتك للمهمّة: ${individualTask.title}!` : `لم يتم قبول إجابتك للمهمّة: ${individualTask.title}!`;
+    var message = (action == 'accept') ? `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يسرّنا إبلاغك بأنّه تم قبول إجابتك للمهمّة: ${individualTask.title}؛ وبذلك تحصل على مهارة ${individualTask.skill}! استمر!<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>` : `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك بأنّه لم يتم قبول إجابتك للمهمّة: ${individualTask.title}؛ وبذلك لا تحصل على مهارة ${individualTask.skill}. لا بأس، استمر بالمحاولة.<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
+
+    DynamoDB.update(params, (error, result) => {
+      const emailParams = {
+        Destination: {
+          ToAddresses: [individualTask.assignedTo.email],
+        },
+        Message: {
+          Body: {
+            Html: {
+              Data: message,
+              Charset: 'utf-8'
+            }
+          },
+          Subject: {
+            Data: subject,
+            Charset: 'utf-8'
+          }
+        },
+        Source: process.env.SENDER_EMAIL,
+        ReplyToAddresses: [process.env.CONTACT_EMAIL]
+      };
+      return SES.sendEmail(emailParams).promise().then((success) => {
+        if (action == 'reject') {
+          return callback(null, makeResponse(204));
+        }
+
+        // Add the skill to the trainee.
+        const timestamp = new Date().getTime();
+        const params = {
+          TableName: 'contributors', // TODO: To be trainees.
+          Key: {
+            id: individualTask.assignedTo.id,
+          },
+          ExpressionAttributeValues: {
+            ':empty_list': [],
+            ':skill': [individualTask.skill],
+            ':updatedAt': timestamp,
+          },
+          UpdateExpression: 'SET skills = list_append(if_not_exists(skills, :empty_list), :skill), updatedAt = :updatedAt',
+          ReturnValues: 'ALL_NEW',
+        };
+
+        DynamoDB.update(params, (error, result) => {
+          console.log('error', error);
+          if (error) return callback(null, makeResponse(410));
+          return callback(null, makeResponse(204));
+        });
+      });
+    });
+  });
+}
+
 module.exports.vote = (event, context, callback) => {
   try {
     var body = JSON.parse(event.body);
@@ -605,17 +967,17 @@ module.exports.listTrainees = (event, context, callback) => {
   });
 };
 
-module.exports.test = (event, context, callback) => {
-  return listTrainees((trainees) => {
-    var initiallyAccepted = trainees.filter((trainee) => {
-      return trainee.currentStatus == 'initiallyAccepted';
-    });
-    for (var i = initiallyAccepted.length - 1; i >= 0; i--) {
-      console.log('accepting', initiallyAccepted[i].fullname);
-      accept(initiallyAccepted[i].id);
-    }
-  });
-};
+// module.exports.test = (event, context, callback) => {
+//   return listTrainees((trainees) => {
+//     var initiallyAccepted = trainees.filter((trainee) => {
+//       return trainee.currentStatus == 'initiallyAccepted';
+//     });
+//     for (var i = initiallyAccepted.length - 1; i >= 0; i--) {
+//       console.log('accepting', initiallyAccepted[i].fullname);
+//       accept(initiallyAccepted[i].id);
+//     }
+//   });
+// };
 
 /**
   * Returns an IAM policy document for a given user and resource.
@@ -646,20 +1008,35 @@ const buildIAMPolicy = (userId, effect, resource, context) => {
   return policy;
 };
 
-  const getUserByEmail = (email, callback) => {
-    const scanParams = {
-      TableName: 'contributors',
-      FilterExpression: 'attribute_not_exists(deletedAt) and email = :email',
-      ExpressionAttributeValues: {
-        ':email' : email,
-      },
-    };
-    DynamoDB.scan(scanParams, (error, result) => {
-      return (error || result.Count > 0) ? callback(result.Items[0]) : callback(null);
-    });
+// TODO: And accepted.
+const getTraineeByEmail = (email, callback) => {
+  const scanParams = {
+    TableName: 'trainees',
+    FilterExpression: 'attribute_not_exists(deletedAt) and email = :email and currentStatus = :currentStatus',
+    ExpressionAttributeValues: {
+      ':email' : email,
+      ':currentStatus': 'accepted',
+    },
   };
+  DynamoDB.scan(scanParams, (error, result) => {
+    return (error || result.Count > 0) ? callback(result.Items[0]) : callback(null);
+  });
+};
 
-module.exports.auth = (event, context, callback) => {
+const getContributorByEmail = (email, callback) => {
+  const scanParams = {
+    TableName: 'contributors',
+    FilterExpression: 'attribute_not_exists(deletedAt) and email = :email',
+    ExpressionAttributeValues: {
+      ':email' : email,
+    },
+  };
+  DynamoDB.scan(scanParams, (error, result) => {
+    return (error || result.Count > 0) ? callback(result.Items[0]) : callback(null);
+  });
+};
+
+module.exports.authTrainee = (event, context, callback) => {
   var accessToken = event.authorizationToken ? event.authorizationToken : null;
   if (accessToken) {
     accessToken = accessToken.replace('Bearer ', '');
@@ -674,14 +1051,65 @@ module.exports.auth = (event, context, callback) => {
       console.log('Unauthorized2');
       return callback('Unauthorized');
     }
-    getUserByEmail(user.email, (foundUser) => {
+    // TODO: Check if the user is verified.
+    // if (user.email_verified === false){
+    //   console.log('EMAIL_NOT_VERIFIED');
+    //   return callback('Unauthorized');
+    // }
+    
+    // Check if the trainee is accepted.
+    getTraineeByEmail(user.email, (foundUser) => {
       if (!foundUser) {
         console.log('Unauthorized3');
         return callback('Unauthorized');
       }
-      // const authorizerContext = { user: foundUser };
+      if (foundUser.currentStatus != 'accepted') {
+        console.log('TRAINEE_NOT_ACCEPTED');
+        return callback('Unauthorized');
+      }
+      foundUser.picture = user.picture;
+      delete foundUser.statuses;
+      delete foundUser.skills;
       const policy = buildIAMPolicy(user.sub, 'Allow', event.methodArn, foundUser);
-      // console.log('foundUser');
+      try {
+        console.log(JSON.stringify(policy));
+        callback(null, policy);
+      } catch (e) {
+        console.log('error', e);
+      }
+    });
+  });
+};
+
+module.exports.authContributor = (event, context, callback) => {
+  console.log('authContributor', event);
+  var accessToken = event.authorizationToken ? event.authorizationToken : null;
+  if (accessToken) {
+    accessToken = accessToken.replace('Bearer ', '');
+  }
+  if (!accessToken) {
+    console.log('Unauthorized');
+    return callback('Unauthorized');
+  }
+  console.log('accessToken', accessToken);
+  const user = auth0.users.getInfo(accessToken, (error, user) => {
+    if (error || user == 'Unauthorized') {
+      console.log('Unauthorized2');
+      return callback('Unauthorized');
+    }
+    // TODO: Check if the user is verified.
+    // if (user.email_verified === false){
+    //   console.log('EMAIL_NOT_VERIFIED');
+    //   return callback('Unauthorized');
+    // }
+
+    getContributorByEmail(user.email, (foundUser) => {
+      if (!foundUser) {
+        console.log('Unauthorized3');
+        return callback('Unauthorized');
+      }
+      foundUser.picture = user.picture;
+      const policy = buildIAMPolicy(user.sub, 'Allow', event.methodArn, foundUser);
       try {
         console.log(JSON.stringify(policy));
         callback(null, policy);
@@ -732,7 +1160,6 @@ module.exports.sendEmailToAll = (event, context, callback) => {
           return filtered;
         }, []);
 
-        // TODO:
         var recipients = [];
 
         if (to.indexOf('contributors') > -1) {
@@ -799,6 +1226,112 @@ module.exports.sendEmail = (event, context, callback) => {
   });
 }
 
+module.exports.createIndividualTask = (event, context, callback) => {
+
+  const createdBy = event.requestContext.authorizer.id;
+
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
+
+  const timestamp = new Date().getTime();
+  const title = body ? body.title : null;
+  const feedback = body ? body.feedback : null;
+  const description = body ? body.description : null;
+  var mentorsString = body ? body.mentors : null;
+  const skill = body ? body.skill : null;
+  const referencesString = body ? body.references : null;
+  const channel = body ? body.channel : null;
+  const expiresAfter = body ? body.expiresAfter : null;
+
+  if (!title || !description || !mentorsString || !skill || !channel || !expiresAfter) {
+    return callback(null, makeResponse(400));
+  }
+
+  // Make some variables.
+  mentorsString = mentorsString.toLowerCase();
+  const mentorEmails = mentorsString.split(',');
+  const references = parseReferences(referencesString);
+
+  getMentors(mentorEmails, (mentors) => {
+    if (mentors.length == 0) return callback(null, makeResponse(404)); // NO_MENTORS_FOUND
+    // TODO: Change to trainees.
+    //listTrainees((trainees) => {
+    const trainees = [{
+      accessToken: 'QISBFZf1woLNKUeNs6KFKkzG9ODUsSJbGqvCm3hBvW8yPp2fvVacHwdQ1xQOcdu9Bk5upEaXy1mcsszOzcnL7XMnYQ5QIxmj',
+      createdAt: 1522234448175,
+      email: 'hossamzee@gmail.com',
+      fullname: 'حسام الزغيبي',
+      gender: 'male',
+      id: '02081107-0d95-4995-8ee8-c5af6e6b503b',
+      mobile: '+966553085572',
+      updatedAt: 1522234448175,
+    }];
+      if (trainees.length == 0) return callback(null, makeResponse(400)); // NO_TRAINEES_FOUND
+      Promise.all(trainees.map((trainee) => {
+        console.log('trainee', trainee);
+        const id = uuid.v4();
+        const putParams = {
+          TableName: 'individualTasks',
+          Item: {
+            id: id,
+            title: title,
+            feedback: feedback,
+            description: description,
+            mentors: mentors,
+            skill: skill,
+            references: references,
+            channel: channel,
+            expiresAfter: expiresAfter,
+            assignedTo: trainee,
+            statuses: [
+              {
+                event: 'created',
+                createdAt: timestamp,
+                createdBy: createdBy,
+              }
+            ],
+            currentStatus: 'created',
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        };
+        return DynamoDB.put(putParams).promise().then((success) => {
+          console.log(process.env.AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN);
+          return StepFunctions.startExecution({
+            stateMachineArn: process.env.AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN,
+            input: JSON.stringify({
+              id: id,
+            }),
+          }).promise();
+          // return success;
+        }).catch((error) => {
+          return error;
+        });
+      })).then((success) => {
+        return callback(null, makeResponse(204));
+      }).catch((error) => {
+        return callback(makeResponse(408, error));
+      });
+    //TODO: });
+  });
+
+  // Validate email, mobile, expectedGraduationDate, and youtubeVideoUrl.
+  // if (validateEmail(email) === false || validateMobile(mobile) == false || validateDate(expectedGraduationDate) == false || validateYoutubeVideoUrl(youtubeVideoUrl) == false) {
+  //   return callback(null, makeResponse(406));
+  // }
+};
+
+module.exports.authContributorInfo = (event, context, callback) => {
+  return callback(null, makeResponse(200, event.requestContext.authorizer));
+}
+
+module.exports.authTraineeInfo = (event, context, callback) => {
+  return callback(null, makeResponse(200, event.requestContext.authorizer));
+}
+
 function chunkArray(myArray, chunk_size){
     var index = 0;
     var arrayLength = myArray.length;
@@ -810,4 +1343,18 @@ function chunkArray(myArray, chunk_size){
       tempArray.push(myChunk);
     }
     return tempArray;
+}
+
+function parseReferences(references) {
+  var regex = /\-\s(.*)\s\((.*)\)\./g;
+  var list = [];
+  var match = regex.exec(references);
+  while (match != null) {
+    list.push({
+      title: match[1],
+      url: match[2],
+    });
+    match = regex.exec(references);
+  }
+  return list;
 }
