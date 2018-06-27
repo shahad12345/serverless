@@ -255,12 +255,28 @@ const listContributors = (contributors) => {
 };
 
 const listTrainees = (trainees) => {
-    const scanParams = {
-      TableName: 'trainees',
-    };
-    DynamoDB.scan(scanParams, (error, result) => {
-      return trainees(result.Items);
-    });
+  const scanParams = {
+    TableName: 'trainees',
+  };
+  DynamoDB.scan(scanParams, (error, result) => {
+    return trainees(result.Items);
+  });
+};
+
+// TODO: This should be for everybody.
+const listAssignees = (assignees) => {
+  const scanParams = {
+    TableName: 'trainees',
+    // FilterExpression: 'attribute_not_exists(deletedAt) and email = :email and currentStatus = :currentStatus',
+    FilterExpression: 'attribute_not_exists(deletedAt) and email = :email',
+    ExpressionAttributeValues: {
+      ':email' : 'hossam_zee@yahoo.com',
+      // ':currentStatus': 'accepted',
+    },
+  };
+  DynamoDB.scan(scanParams, (error, result) => {
+    return assignees(result.Items);
+  });
 };
 
 const getMentors = (emails, mentors) => {
@@ -619,6 +635,8 @@ module.exports.notifyWhenIndividualTaskExpired = (event, context, callback) => {
 
 module.exports.deliverIndividualTask = (event, context, callback) => {
   const authorizer = event.requestContext.authorizer;
+  console.log('deliverIndividualTask');
+  console.log('authorizer', authorizer);
 
   try {
     var body = JSON.parse(event.body);
@@ -653,7 +671,10 @@ module.exports.deliverIndividualTask = (event, context, callback) => {
     // Check if the task is already delivered. 409
     if (individualTask.currentStatus == 'delivered') return callback(null, makeResponse(409));
     // Check if the user is not authorized. 403
-    if (individualTask.assignedTo.id != authorizer.id) return callback(null, makeResponse(403));
+    if (individualTask.assignedTo.id != authorizer.id) {
+      console.log('403 individualTask.assignedTo.id', individualTask.assignedTo.id);
+      return callback(null, makeResponse(403));
+    }
     // Check if the task has expired.
     if (individualTask.currentStatus == 'expired') return callback(null, makeResponse(408));
 
@@ -793,7 +814,7 @@ module.exports.correctIndividualTask = (event, context, callback) => {
         // Add the skill to the trainee.
         const timestamp = new Date().getTime();
         const params = {
-          TableName: 'contributors', // TODO: To be trainees.
+          TableName: 'trainees', // TODO: To be trainees.
           Key: {
             id: individualTask.assignedTo.id,
           },
@@ -967,17 +988,26 @@ module.exports.listTrainees = (event, context, callback) => {
   });
 };
 
-// module.exports.test = (event, context, callback) => {
-//   return listTrainees((trainees) => {
-//     var initiallyAccepted = trainees.filter((trainee) => {
-//       return trainee.currentStatus == 'initiallyAccepted';
-//     });
-//     for (var i = initiallyAccepted.length - 1; i >= 0; i--) {
-//       console.log('accepting', initiallyAccepted[i].fullname);
-//       accept(initiallyAccepted[i].id);
-//     }
-//   });
-// };
+module.exports.test = (event, context, callback) => {
+  return listContributors((contributors) => {
+    for (var i = 0; i < contributors.length; i++) {
+      var contributor = contributors[i];
+      var trainee = contributor;
+      trainee.id = uuid.v4();
+      trainee.email = trainee.email.split('@')[0] + '@yopmail.com';
+      trainee.currentStatus = 'accepted';
+      const putParams = {
+        TableName: 'trainees',
+        Item: trainee,
+      };
+      DynamoDB.put(putParams, (error) => {
+        console.log('trainee', trainee);
+        console.log('error', error);
+        // return callback(error);
+      });
+    }
+  });
+};
 
 /**
   * Returns an IAM policy document for a given user and resource.
@@ -1008,7 +1038,6 @@ const buildIAMPolicy = (userId, effect, resource, context) => {
   return policy;
 };
 
-// TODO: And accepted.
 const getTraineeByEmail = (email, callback) => {
   const scanParams = {
     TableName: 'trainees',
@@ -1070,7 +1099,7 @@ module.exports.authTrainee = (event, context, callback) => {
       foundUser.picture = user.picture;
       delete foundUser.statuses;
       delete foundUser.skills;
-      const policy = buildIAMPolicy(user.sub, 'Allow', event.methodArn, foundUser);
+      const policy = buildIAMPolicy(user.sub, 'Allow', '*', foundUser);
       try {
         console.log(JSON.stringify(policy));
         callback(null, policy);
@@ -1102,19 +1131,21 @@ module.exports.authContributor = (event, context, callback) => {
     //   console.log('EMAIL_NOT_VERIFIED');
     //   return callback('Unauthorized');
     // }
-
+    console.log(user);
     getContributorByEmail(user.email, (foundUser) => {
       if (!foundUser) {
         console.log('Unauthorized3');
         return callback('Unauthorized');
       }
       foundUser.picture = user.picture;
-      const policy = buildIAMPolicy(user.sub, 'Allow', event.methodArn, foundUser);
+      delete foundUser.accessToken;
+      const policy = buildIAMPolicy(user.sub, 'Allow', '*', foundUser);
       try {
         console.log(JSON.stringify(policy));
         callback(null, policy);
       } catch (e) {
         console.log('error', e);
+        return callback('Unauthorized');
       }
     });
   });
@@ -1226,6 +1257,8 @@ module.exports.sendEmail = (event, context, callback) => {
   });
 }
 
+
+
 module.exports.createIndividualTask = (event, context, callback) => {
 
   const createdBy = event.requestContext.authorizer.id;
@@ -1257,18 +1290,7 @@ module.exports.createIndividualTask = (event, context, callback) => {
 
   getMentors(mentorEmails, (mentors) => {
     if (mentors.length == 0) return callback(null, makeResponse(404)); // NO_MENTORS_FOUND
-    // TODO: Change to trainees.
-    //listTrainees((trainees) => {
-    const trainees = [{
-      accessToken: 'QISBFZf1woLNKUeNs6KFKkzG9ODUsSJbGqvCm3hBvW8yPp2fvVacHwdQ1xQOcdu9Bk5upEaXy1mcsszOzcnL7XMnYQ5QIxmj',
-      createdAt: 1522234448175,
-      email: 'hossamzee@gmail.com',
-      fullname: 'حسام الزغيبي',
-      gender: 'male',
-      id: '02081107-0d95-4995-8ee8-c5af6e6b503b',
-      mobile: '+966553085572',
-      updatedAt: 1522234448175,
-    }];
+    listAssignees((trainees) => {
       if (trainees.length == 0) return callback(null, makeResponse(400)); // NO_TRAINEES_FOUND
       Promise.all(trainees.map((trainee) => {
         console.log('trainee', trainee);
@@ -1315,7 +1337,7 @@ module.exports.createIndividualTask = (event, context, callback) => {
       }).catch((error) => {
         return callback(makeResponse(408, error));
       });
-    //TODO: });
+    });
   });
 
   // Validate email, mobile, expectedGraduationDate, and youtubeVideoUrl.

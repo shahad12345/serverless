@@ -17,14 +17,8 @@ provider:
     - Effect: Allow
       Action:
         - ses:*
-        - dynamodb:DescribeTable
-        - dynamodb:Query
-        - dynamodb:Scan
-        - dynamodb:GetItem
-        - dynamodb:PutItem
-        - dynamodb:UpdateItem
-        - dynamodb:DeleteItem
-        - states:StartExecution
+        - dynamodb:*
+        - states:*
         - lambda:*
         - execute-api:*
       Resource: '*'
@@ -94,14 +88,13 @@ functions:
           method: get
           cors: true
           authorizer: authContributor
-  # test:
-  #   handler: handler.test
-  #   events:
-  #     - http:
-  #         path: test
-  #         method: get
-  #         cors: true
-  #         # authorizer: auth
+  test:
+    handler: handler.test
+    events:
+      - http:
+          path: test
+          method: get
+          cors: true
   sendEmail:
     handler: handler.sendEmail
     # environment:
