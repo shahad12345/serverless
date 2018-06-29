@@ -268,9 +268,9 @@ const listAssignees = (assignees) => {
   const scanParams = {
     TableName: 'trainees',
     // FilterExpression: 'attribute_not_exists(deletedAt) and email = :email and currentStatus = :currentStatus',
-    FilterExpression: 'attribute_not_exists(deletedAt) and email = :email',
+    FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
     ExpressionAttributeValues: {
-      ':email' : 'hossam_zee@yahoo.com',
+      ':email' : 'yopmail.com',
       // ':currentStatus': 'accepted',
     },
   };
@@ -988,26 +988,27 @@ module.exports.listTrainees = (event, context, callback) => {
   });
 };
 
-module.exports.test = (event, context, callback) => {
-  return listContributors((contributors) => {
-    for (var i = 0; i < contributors.length; i++) {
-      var contributor = contributors[i];
-      var trainee = contributor;
-      trainee.id = uuid.v4();
-      trainee.email = trainee.email.split('@')[0] + '@yopmail.com';
-      trainee.currentStatus = 'accepted';
-      const putParams = {
-        TableName: 'trainees',
-        Item: trainee,
-      };
-      DynamoDB.put(putParams, (error) => {
-        console.log('trainee', trainee);
-        console.log('error', error);
-        // return callback(error);
-      });
-    }
-  });
-};
+// TODO:
+// module.exports.test = (event, context, callback) => {
+//   return listContributors((contributors) => {
+//     for (var i = 0; i < contributors.length; i++) {
+//       var contributor = contributors[i];
+//       var trainee = contributor;
+//       trainee.id = uuid.v4();
+//       trainee.email = trainee.email.split('@')[0] + '@yopmail.com';
+//       trainee.currentStatus = 'accepted';
+//       const putParams = {
+//         TableName: 'trainees',
+//         Item: trainee,
+//       };
+//       DynamoDB.put(putParams, (error) => {
+//         console.log('trainee', trainee);
+//         console.log('error', error);
+//         // return callback(error);
+//       });
+//     }
+//   });
+// };
 
 /**
   * Returns an IAM policy document for a given user and resource.
@@ -1271,8 +1272,8 @@ module.exports.createIndividualTask = (event, context, callback) => {
 
   const timestamp = new Date().getTime();
   const title = body ? body.title : null;
-  const feedback = body ? body.feedback : null;
-  const description = body ? body.description : null;
+  var feedback = body ? body.feedback : null;
+  var description = body ? body.description : null;
   var mentorsString = body ? body.mentors : null;
   const skill = body ? body.skill : null;
   const referencesString = body ? body.references : null;
@@ -1285,22 +1286,35 @@ module.exports.createIndividualTask = (event, context, callback) => {
 
   // Make some variables.
   mentorsString = mentorsString.toLowerCase();
-  const mentorEmails = mentorsString.split(',');
+  description = description.replace(/(?:\r\n|\r|\n)/g, '<br />');
+  feedback = feedback.replace(/(?:\r\n|\r|\n)/g, '<br />');
+
+  const mentorEmails = mentorsString.split(',').map(function(item) {
+    return item.trim();
+  });
+
   const references = parseReferences(referencesString);
 
   getMentors(mentorEmails, (mentors) => {
     if (mentors.length == 0) return callback(null, makeResponse(404)); // NO_MENTORS_FOUND
     listAssignees((trainees) => {
       if (trainees.length == 0) return callback(null, makeResponse(400)); // NO_TRAINEES_FOUND
-      Promise.all(trainees.map((trainee) => {
-        console.log('trainee', trainee);
+      Promise.all(trainees.map((assignee) => {
         const id = uuid.v4();
+        console.log('taskId', id);
+        console.log('taskTitle', title);
+        console.log('assignee', assignee);
+        // TODO: Trainee should have only id, email, fullname.
+        const trainee = {
+          id: assignee.id,
+          email: assignee.email,
+          fullname: assignee.fullname,
+        };
         const putParams = {
           TableName: 'individualTasks',
           Item: {
             id: id,
             title: title,
-            feedback: feedback,
             description: description,
             mentors: mentors,
             skill: skill,
@@ -1320,6 +1334,13 @@ module.exports.createIndividualTask = (event, context, callback) => {
             updatedAt: timestamp,
           },
         };
+
+        // Since it is optional.
+        if (feedback && feedback != '') {
+          putParams.Item.feedback = feedback;
+        }
+
+        console.log('params', putParams);
         return DynamoDB.put(putParams).promise().then((success) => {
           console.log(process.env.AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN);
           return StepFunctions.startExecution({
@@ -1328,13 +1349,14 @@ module.exports.createIndividualTask = (event, context, callback) => {
               id: id,
             }),
           }).promise();
-          // return success;
         }).catch((error) => {
+          console.log('error1', error);
           return error;
         });
       })).then((success) => {
         return callback(null, makeResponse(204));
       }).catch((error) => {
+        console.log('error2', error);
         return callback(makeResponse(408, error));
       });
     });

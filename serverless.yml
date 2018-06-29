@@ -88,13 +88,13 @@ functions:
           method: get
           cors: true
           authorizer: authContributor
-  test:
-    handler: handler.test
-    events:
-      - http:
-          path: test
-          method: get
-          cors: true
+  # test:
+  #   handler: handler.test
+  #   events:
+  #     - http:
+  #         path: test
+  #         method: get
+  #         cors: true
   sendEmail:
     handler: handler.sendEmail
     # environment:
