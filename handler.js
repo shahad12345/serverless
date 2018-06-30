@@ -267,11 +267,11 @@ const listTrainees = (trainees) => {
 const listAssignees = (assignees) => {
   const scanParams = {
     TableName: 'trainees',
-    // FilterExpression: 'attribute_not_exists(deletedAt) and email = :email and currentStatus = :currentStatus',
-    FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
+    FilterExpression: 'attribute_not_exists(deletedAt) and currentStatus = :currentStatus',
+    // FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
     ExpressionAttributeValues: {
-      ':email' : 'yopmail.com',
-      // ':currentStatus': 'accepted',
+      // ':email' : 'yopmail.com',
+      ':currentStatus': 'accepted',
     },
   };
   DynamoDB.scan(scanParams, (error, result) => {
@@ -566,7 +566,7 @@ module.exports.notifyWhenIndividualTaskCreated = (event, context, callback) => {
       DynamoDB.update(params, (error, result) => {
         return callback(null, {
           id: id,
-          expiresAfterInSeconds: individualTask.expiresAfter*60, // TODO: In seconds.
+          expiresAfterInSeconds: individualTask.expiresAfter*60*60, // TODO: In seconds.
         });
       });
     });
@@ -660,9 +660,10 @@ module.exports.deliverIndividualTask = (event, context, callback) => {
   }
 
   var answersHTML = '';
+  const baseUrl = 'https://d2hbxkrooc.execute-api.eu-west-1.amazonaws.com/dev/answers';
 
   for (var i = 0; i < answers.length; i++) {
-    answersHTML += `<br />- ${answers[i].title} (<a href="${answers[i].url}">${answers[i].url}</a>).`;
+    answersHTML += `<br />- ${answers[i].title} (<a href="${baseUrl}?id=${id}&answer=${i}">${answers[i].url}</a>).`;
   }
 
   getIndividualTaskById(id, (individualTask) => {
@@ -1374,6 +1375,34 @@ module.exports.authContributorInfo = (event, context, callback) => {
 
 module.exports.authTraineeInfo = (event, context, callback) => {
   return callback(null, makeResponse(200, event.requestContext.authorizer));
+}
+
+module.exports.visitAnswer = (event, context, callback) => {
+  const id = event.queryStringParameters ? event.queryStringParameters.id : null;
+  const answer = event.queryStringParameters ? event.queryStringParameters.answer : null;
+
+  if (!id || !answer) {
+    return callback(null, makeResponse(400, 'VALIDATION FAILED'));
+  }
+
+  getIndividualTaskById(id, (individualTask) => {
+    if (!individualTask) return callback(null, makeResponse(404, 'TASK NOT FOUND'));
+    if (individualTask.currentStatus == 'accepted' || individualTask.currentStatus == 'rejected') {
+      return callback(null, makeResponse(406, 'DONE ALREADY'));
+    }
+    try {
+      const answerUrl = individualTask.answers[answer].url;
+      return callback(null, {
+        statusCode: 302,
+        headers: {
+          Location: answerUrl,
+        },
+        body: '',
+      });
+    } catch (e) {
+      return callback(null, makeResponse(403, 'ANSWER NOT FOUND'));
+    }
+  });
 }
 
 function chunkArray(myArray, chunk_size){

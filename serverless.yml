@@ -42,7 +42,7 @@ functions:
           path: emails
           method: post
           cors: true
-          # TODO: authorizer: ${self:custom.authorizer.users}
+          authorizer: authContributor
     environment:
       SEND_EMAIL_LAMBDA_ARN: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${self:provider.stage}-sendEmail"
       # arn:aws:lambda:eu-west-1:510712368144:function:cloudsystems-serverless-dev-sendEmail
@@ -147,6 +147,13 @@ functions:
           method: get
           cors: true
           authorizer: authContributor
+  visitAnswer:
+    handler: handler.visitAnswer
+    events:
+      - http:
+          path: answers
+          method: get
+          cors: true
 
 stepFunctions:
   stateMachines:
