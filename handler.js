@@ -267,15 +267,20 @@ const listTrainees = (trainees) => {
 const listAssignees = (assignees) => {
   const scanParams = {
     TableName: 'trainees',
-    FilterExpression: 'attribute_not_exists(deletedAt) and currentStatus = :currentStatus',
-    // FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
+    // FilterExpression: 'attribute_not_exists(deletedAt) and currentStatus = :currentStatus',
+    FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
     ExpressionAttributeValues: {
-      // ':email' : 'yopmail.com',
-      ':currentStatus': 'accepted',
+      ':email' : 'yopmail.com',
+      // ':currentStatus': 'accepted',
     },
   };
   DynamoDB.scan(scanParams, (error, result) => {
     return assignees(result.Items);
+    // var temp = result.Items;
+    // for (var i=0; i<4; i++){
+    //   temp = temp.concat(temp);
+    // }
+    // return assignees(temp);
   });
 };
 
@@ -499,14 +504,21 @@ const getIndividualTaskById = (id, callback) => {
       },
     };
     DynamoDB.scan(scanParams, (error, result) => {
+      console.log('getIndividualTaskById error', error);
       return (error || result.Count == 0) ? callback(null) : callback(result.Items[0]);
     });
 };
 
 module.exports.notifyWhenIndividualTaskCreated = (event, context, callback) => {
   const id = event.id;
+  console.log('notifyWhenIndividualTaskCreated', id);
+  console.log('notifyWhenIndividualTaskCreated event', event);
+  console.log('notifyWhenIndividualTaskCreated context', context);
   getIndividualTaskById(id, (individualTask) => {
-    if (!individualTask) return callback('TASK_CANNOT_BE_FOUND');
+    if (!individualTask) {
+      console.log('TASK_CANNOT_BE_FOUND');
+      return callback('TASK_CANNOT_BE_FOUND');
+    }
     var subject = `مهمّة جديدة: ${individualTask.title}!`;
     var feedback = (!individualTask.feedback || individualTask.feedback == '') ? '' : `${individualTask.feedback}<br /><br />`;
     var references = '';
@@ -545,6 +557,7 @@ module.exports.notifyWhenIndividualTaskCreated = (event, context, callback) => {
       // CcAddresses: [process.env.CONTACT_EMAIL],
     };
     SES.sendEmail(emailParams, (error, response) => {
+      console.log('error sending email', error);
       const timestamp = new Date().getTime();
       const params = {
         TableName: 'individualTasks',
@@ -564,6 +577,7 @@ module.exports.notifyWhenIndividualTaskCreated = (event, context, callback) => {
       };
 
       DynamoDB.update(params, (error, result) => {
+        console.log('error when updating db', error);
         return callback(null, {
           id: id,
           expiresAfterInSeconds: individualTask.expiresAfter*60*60, // TODO: In seconds.
@@ -1294,6 +1308,8 @@ module.exports.createIndividualTask = (event, context, callback) => {
     return item.trim();
   });
 
+  console.log('referencesString', referencesString);
+
   const references = parseReferences(referencesString);
 
   getMentors(mentorEmails, (mentors) => {
@@ -1431,3 +1447,59 @@ function parseReferences(references) {
   }
   return list;
 }
+
+// listAssignees((trainees) => {
+//   console.log(trainees.length);
+//   console.log(trainees);
+// });
+
+// const listTasks = (tasks) => {
+//   const scanParams = {
+//     TableName: 'individualTasks',
+//     // FilterExpression: 'attribute_not_exists(deletedAt) and currentStatus = :currentStatus',
+//     // FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
+//     // ExpressionAttributeValues: {
+//     //   ':email' : 'yopmail.com',
+//     //   // ':currentStatus': 'accepted',
+//     // },
+//   };
+//   DynamoDB.scan(scanParams, (error, result) => {
+//     return tasks(result.Items);
+//   });
+// };
+
+// listTasks((tasks) => {
+//   // console.log(tasks);
+//   for (var i = tasks.length - 1; i >= 0; i--) {
+//     var t = tasks[i];
+//     module.exports.notifyWhenIndividualTaskCreated({id: t.id}, null, (error, success) => {
+//       console.log('error', error);
+//       console.log('success', success);
+//     });
+//   }
+// });
+
+// var params = {
+//   stateMachineArn: 'arn:aws:states:eu-west-1:510712368144:stateMachine:afterIndividualTaskCreatedStateMachine', /* required */
+//   statusFilter: 'RUNNING'
+// };
+
+// StepFunctions.listExecutions(params, function(err, data) {
+//   if (err) console.log(err, err.stack); // an error occurred
+//   else     console.log(data);           // successful response
+
+//   // data.forEach((item) => {
+//   for (var i = data.executions.length - 1; i >= 0; i--) {
+//     var item = data.executions[i];
+//     var params2 = {
+//       executionArn: item.executionArn, /* required */
+//     };
+
+//     StepFunctions.stopExecution(params2, function(err, data) {
+//       if (err) console.log(err, err.stack); // an error occurred
+//       else     console.log(data);           // successful response
+//     });
+//   }
+
+//   // });
+// });
