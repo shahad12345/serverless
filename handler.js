@@ -267,20 +267,15 @@ const listTrainees = (trainees) => {
 const listAssignees = (assignees) => {
   const scanParams = {
     TableName: 'trainees',
-    // FilterExpression: 'attribute_not_exists(deletedAt) and currentStatus = :currentStatus',
-    FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
+    FilterExpression: 'attribute_not_exists(deletedAt) and currentStatus = :currentStatus',
+    // FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
     ExpressionAttributeValues: {
-      ':email' : 'yopmail.com',
-      // ':currentStatus': 'accepted',
+      // ':email' : 'yopmail.com',
+      ':currentStatus': 'accepted',
     },
   };
   DynamoDB.scan(scanParams, (error, result) => {
     return assignees(result.Items);
-    // var temp = result.Items;
-    // for (var i=0; i<4; i++){
-    //   temp = temp.concat(temp);
-    // }
-    // return assignees(temp);
   });
 };
 
@@ -670,6 +665,8 @@ module.exports.deliverIndividualTask = (event, context, callback) => {
   const answers = parseReferences(answersString);
 
   if (answers.length == 0) {
+    console.log('answersString', answersString);
+    console.log('answers', answers);
     return callback(null, makeResponse(400));
   }
 
@@ -682,7 +679,10 @@ module.exports.deliverIndividualTask = (event, context, callback) => {
 
   getIndividualTaskById(id, (individualTask) => {
     // Check if the task does not exist.
-    if (!individualTask) return callback(null, makeResponse(400));
+    if (!individualTask) {
+      console.log('cannot find task', id);
+      return callback(null, makeResponse(400));
+    }
     // Check if the task is already delivered. 409
     if (individualTask.currentStatus == 'delivered') return callback(null, makeResponse(409));
     // Check if the user is not authorized. 403
@@ -1467,6 +1467,52 @@ function parseReferences(references) {
 //     return tasks(result.Items);
 //   });
 // };
+
+const listTasks = (tasks) => {
+  const scanParams = {
+    TableName: 'individualTasks',
+    FilterExpression: 'attribute_not_exists(deletedAt) and currentStatus = :currentStatus',
+    // FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
+    ExpressionAttributeValues: {
+      // ':email' : 'yopmail.com',
+      ':currentStatus': 'sent',
+    },
+  };
+  DynamoDB.scan(scanParams, (error, result) => {
+    return tasks(result.Items);
+  });
+};
+
+// listTasks((tasks) => {
+//   getMentors(['abeerm171@yahoo.com'], (mentors) => {
+//     for (var i = tasks.length - 1; i >= 0; i--) {
+//       const task = tasks[i];
+
+//       const params = {
+//         TableName: 'individualTasks',
+//         Key: {
+//           id: task.id,
+//         },
+//         ExpressionAttributeValues: {
+//           ':mentor': mentors,
+//         },
+//         UpdateExpression: 'SET mentors = list_append(mentors, :mentor)',
+//         ReturnValues: 'ALL_NEW',
+//       };
+
+//       DynamoDB.update(params, (error, data) => {
+//         console.log('error', error);
+//         console.log('data', data);
+//       });
+
+//       // 
+//       // 
+//     }
+//   });
+
+//   // e2e9bdf0-74a7-4408-9add-f374e2d5a3d1
+//   // console.log(tasks);
+// });
 
 // listTasks((tasks) => {
 //   // console.log(tasks);
