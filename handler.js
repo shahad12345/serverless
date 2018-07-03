@@ -263,6 +263,15 @@ const listTrainees = (trainees) => {
   });
 };
 
+const listIndividualTasks = (individualTasks) => {
+  const scanParams = {
+    TableName: 'individualTasks',
+  };
+  DynamoDB.scan(scanParams, (error, result) => {
+    return individualTasks(result.Items);
+  });
+};
+
 // TODO: This should be for everybody.
 const listAssignees = (assignees) => {
   const scanParams = {
@@ -683,8 +692,12 @@ module.exports.deliverIndividualTask = (event, context, callback) => {
       console.log('cannot find task', id);
       return callback(null, makeResponse(400));
     }
+
     // Check if the task is already delivered. 409
-    if (individualTask.currentStatus == 'delivered') return callback(null, makeResponse(409));
+    if (individualTask.currentStatus == 'delivered' || individualTask.currentStatus == 'accepted' || individualTask.currentStatus == 'rejected') {
+      return callback(null, makeResponse(409));
+    }
+
     // Check if the user is not authorized. 403
     if (individualTask.assignedTo.id != authorizer.id) {
       console.log('403 individualTask.assignedTo.id', individualTask.assignedTo.id);
@@ -1000,6 +1013,12 @@ module.exports.accept = (event, context, callback) => {
 module.exports.listTrainees = (event, context, callback) => {
   return listTrainees((trainees) => {
     return callback(null, makeResponse(200, trainees));
+  });
+};
+
+module.exports.listIndividualTasks = (event, context, callback) => {
+  return listIndividualTasks((individualTasks) => {
+    return callback(null, makeResponse(200, individualTasks));
   });
 };
 
