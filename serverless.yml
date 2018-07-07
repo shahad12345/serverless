@@ -105,8 +105,6 @@ functions:
   #         cors: true
   sendEmail:
     handler: handler.sendEmail
-    # environment:
-    #   SEND_EMAIL_STATE_MACHINE_ARN: "arn:aws:states:#{AWS::Region}:#{AWS::AccountId}:stateMachine:sendEmailStateMachine"
   createIndividualTask:
     handler: handler.createIndividualTask
     events:

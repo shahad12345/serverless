@@ -502,12 +502,12 @@ const getTraineeById = (id, callback) => {
 const getIndividualTaskById = (id, callback) => {
     const scanParams = {
       TableName: 'individualTasks',
-      FilterExpression: 'id = :id',
+      KeyConditionExpression: 'id = :id',
       ExpressionAttributeValues: {
         ':id': id,
       },
     };
-    DynamoDB.scan(scanParams, (error, result) => {
+    DynamoDB.query(scanParams, (error, result) => {
       console.log('getIndividualTaskById error', error);
       return (error || result.Count == 0) ? callback(null) : callback(result.Items[0]);
     });
@@ -1292,8 +1292,6 @@ module.exports.sendEmail = (event, context, callback) => {
   });
 }
 
-
-
 module.exports.createIndividualTask = (event, context, callback) => {
 
   const createdBy = event.requestContext.authorizer.id;
@@ -1487,62 +1485,53 @@ function parseReferences(references) {
 //   });
 // };
 
-const listTasks = (tasks) => {
-  const scanParams = {
-    TableName: 'individualTasks',
-    FilterExpression: 'attribute_not_exists(deletedAt) and currentStatus = :currentStatus',
-    // FilterExpression: 'attribute_not_exists(deletedAt) and contains(email, :email)',
-    ExpressionAttributeValues: {
-      // ':email' : 'yopmail.com',
-      ':currentStatus': 'sent',
-    },
-  };
-  DynamoDB.scan(scanParams, (error, result) => {
-    return tasks(result.Items);
-  });
-};
+// const listTasks = (tasks) => {
+//   const scanParams = {
+//     TableName: 'individualTasks',
+//     FilterExpression: 'skill = :skill and currentStatus = :currentStatus',
+//     ExpressionAttributeValues: {
+//       ':skill': 'Command Line',
+//       ':currentStatus': 'accepted',
+//     },
+//   };
+//   DynamoDB.scan(scanParams, (error, result) => {
+//     return tasks(result.Items);
+//   });
+// };
 
 // listTasks((tasks) => {
-//   getMentors(['abeerm171@yahoo.com'], (mentors) => {
+//     console.log(tasks.length);
 //     for (var i = tasks.length - 1; i >= 0; i--) {
 //       const task = tasks[i];
-
-//       const params = {
-//         TableName: 'individualTasks',
-//         Key: {
-//           id: task.id,
-//         },
-//         ExpressionAttributeValues: {
-//           ':mentor': mentors,
-//         },
-//         UpdateExpression: 'SET mentors = list_append(mentors, :mentor)',
-//         ReturnValues: 'ALL_NEW',
-//       };
-
-//       DynamoDB.update(params, (error, data) => {
-//         console.log('error', error);
-//         console.log('data', data);
-//       });
-
-//       // 
-//       // 
-//     }
-//   });
-
-//   // e2e9bdf0-74a7-4408-9add-f374e2d5a3d1
-//   // console.log(tasks);
+//       console.log(task.assignedTo.id);
+//       // const params = {
+//       //   TableName: 'individualTasks',
+//       //   Key: {
+//       //     id: task.id,
+//       //   },
+//       //   ExpressionAttributeValues: {
+//       //     ':skill': 'Command Line',
+//       //   },
+//       //   UpdateExpression: 'SET skill = :skill',
+//       //   ReturnValues: 'ALL_NEW',
+//       // };
+//       // DynamoDB.update(params, (error, data) => {
+//       //   console.log('error', error);
+//       //   console.log('data', data);
+//       // });
+//   }
 // });
 
 // listTasks((tasks) => {
 //   // console.log(tasks);
 //   for (var i = tasks.length - 1; i >= 0; i--) {
 //     var t = tasks[i];
-//     module.exports.notifyWhenIndividualTaskCreated({id: t.id}, null, (error, success) => {
-//       console.log('error', error);
-//       console.log('success', success);
-//     });
+//     // module.exports.notifyWhenIndividualTaskCreated({id: t.id}, null, (error, success) => {
+//     //   console.log('error', error);
+//     //   console.log('success', success);
+//     // });
 //   }
-// });
+// }); 
 
 // var params = {
 //   stateMachineArn: 'arn:aws:states:eu-west-1:510712368144:stateMachine:afterIndividualTaskCreatedStateMachine', /* required */
@@ -1568,3 +1557,69 @@ const listTasks = (tasks) => {
 
 //   // });
 // });
+
+  // getIndividualTaskById(id, (individualTask) => {
+  //   console.log(individualTask);
+  // });
+
+  // const scanParams = {
+  //   TableName: 'individualTasks',
+  //   ConsistentRead: true,
+  //   FilterExpression: 'currentStatus = :currentStatus',
+  //   ExpressionAttributeValues: {
+  //     ':currentStatus': 'accepted',
+  //   },
+  // };
+
+  // DynamoDB.scan(scanParams, (error, result) => {
+  //   console.log(error, result);
+  // });
+
+  // 'arn:aws:states:eu-west-1:510712368144:stateMachine:afterIndividualTaskCreatedStateMachine'
+
+  const ids = [
+    '0ffd625e-35c0-4aa3-ba8d-91f07543ac2f',
+    '2f03d15f-0fca-4853-9ea9-a6348a2a5bbd',
+    'b2c4d3a9-ff84-4918-88ff-87ac3711a0a8',
+    'f03878b5-2fdd-4c4c-aa88-fde94b4bd845',
+    '79c505c1-15a6-4ed0-88d0-7cb788825fd5',
+    '7da7469d-87f9-4d8e-a0fe-2f0e5c09029f',
+    'f6839d2f-5328-4363-8e22-2daec6e37179',
+    'c56880fd-3ac4-4bac-8515-a924879a0d4c',
+    '1db5150d-4afc-4f2d-938f-346c4804011c',
+    'f507ed0c-e1f5-40f0-a5ce-92e11b2010e6',
+    'bc94760a-2a18-4b6e-bd20-450f326ab5e1',
+    '5aa6a2d4-0f7e-4b88-af83-6a7afad980d6',
+    'a02f5971-ffcb-4676-baa3-b3c152ffd981',
+    '8128a86e-e1c4-491f-87ab-fb0c5530c96a',
+    'e6bd0498-4638-411a-8892-478c0d282b8b',
+    '0f4e98c7-bf0b-4ea9-aa07-84e2eff0b462',
+    '50a88ff0-92da-4dce-bfca-df307ab96abb',
+    'a88551bd-33f4-4b60-acca-93f80a064c5d',
+    '92470ccf-ee14-47bc-bf06-40d0591deb6d',
+    '37c0f19c-8cd6-4bcd-b62f-c1d5ee948ae3',
+    '5cd15d90-e8e6-4305-8b16-11f39ec6cd3e',
+    '3fff92f1-9e80-4a5e-af95-89242aa30e8d',
+  ];
+
+  for (var i = ids.length - 1; i >= 0; i--) {
+    const taskId = ids[i];
+    console.log(taskId);
+    StepFunctions.startExecution({
+      stateMachineArn: 'arn:aws:states:eu-west-1:510712368144:stateMachine:afterIndividualTaskCreatedStateMachine',
+      input: JSON.stringify({
+        id: taskId,
+      }),
+    }, (error, success) => {
+      console.log('error', error);
+      console.log('success', success);
+    });
+  }
+
+  // console.log(process.env.AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN);
+  // return StepFunctions.startExecution({
+  //   stateMachineArn: process.env.AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN,
+  //   input: JSON.stringify({
+  //     id: id,
+  //   }),
+  // }).promise();
