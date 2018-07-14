@@ -137,6 +137,14 @@ functions:
           method: post
           cors: true
           authorizer: authContributor
+  extendIndividualTask:
+    handler: handler.extendIndividualTask
+    events:
+      - http:
+          path: individual-tasks/extend
+          method: post
+          cors: true
+          authorizer: authContributor
   authTraineeInfo:
     handler: handler.authTraineeInfo
     events:
