@@ -263,15 +263,6 @@ const listTrainees = (trainees) => {
   });
 };
 
-const listIndividualTasks = (individualTasks) => {
-  const scanParams = {
-    TableName: 'individualTasks',
-  };
-  DynamoDB.scan(scanParams, (error, result) => {
-    return individualTasks(result.Items);
-  });
-};
-
 // TODO: This should be for everybody.
 const listAssignees = (assignees) => {
   const scanParams = {
@@ -1557,20 +1548,170 @@ module.exports.extendIndividualTask = (event, context, callback) => {
 //   }
 //   // console.log(skilledTrainees.length);
 // });
+//
 
 // const fetchIndividualTasks = (callback) => {
-// const scanParams = {
-//     TableName: 'individualTasks',
-//     // FilterExpression: 'currentStatus = :currentStatus and channel = :channel',
-//     // ExpressionAttributeValues: {
-//     //   ':currentStatus' : 'delivered',
-//     //   ':channel' : 'Explorer',
-//     // },
-//     // LastEvaluatedKey: null,
-// };
+
+const listIndividualTasks = (individualTasks) => {
+  let tasks = [];
+  const scanParams = {
+    TableName: 'individualTasks',
+  };
+  function onScan(error, data) {
+    if (error) {
+      return console.log('error', error);
+    }
+    tasks = tasks.concat(data.Items);
+    if (typeof data.LastEvaluatedKey != "undefined") {
+      scanParams.ExclusiveStartKey = data.LastEvaluatedKey;
+      DynamoDB.scan(scanParams, onScan);
+    } else {
+      individualTasks(tasks);
+    }
+  }
+  DynamoDB.scan(scanParams, onScan);
+};
+
+const collectTraineesData = (callback) => {
+  let data = [];
+  listIndividualTasks((individualTasks) => {
+    listTrainees((trainees) => {
+      trainees = trainees.filter((trainee) => {
+        return trainee.currentStatus == 'accepted' && trainee.email.indexOf('yopmail') < 0; // TODO:
+      });
+      for (var i = trainees.length - 1; i >= 0; i--) {
+        const trainee = trainees[i];
+        data.push({
+          id: trainee.id,
+          fullname: trainee.fullname,
+          skills: trainee.skills,
+          email: trainee.email,
+          total: individualTasks.filter((task) => {
+            return task.assignedTo.id == trainee.id;
+          }).length,
+          sent: individualTasks.filter((task) => {
+            return task.assignedTo.id == trainee.id && task.currentStatus == 'sent';
+          }).length,
+          delivered: individualTasks.filter((task) => {
+            return task.assignedTo.id == trainee.id && task.currentStatus == 'delivered';
+          }).length,
+          accepted: individualTasks.filter((task) => {
+            return task.assignedTo.id == trainee.id && task.currentStatus == 'accepted';
+          }).length,
+          rejected: individualTasks.filter((task) => {
+            return task.assignedTo.id == trainee.id && task.currentStatus == 'rejected';
+          }).length,
+          expired: individualTasks.filter((task) => {
+            return task.assignedTo.id == trainee.id && task.currentStatus == 'expired';
+          }).length,
+        });
+      }
+      callback(data);
+    });
+  });
+};
+
+const kickOutTrainee = (id, callback) => {
+  getTraineeById(id, (trainee) => {
+    console.log(trainee);
+    if (trainee.currentStatus == 'kickedOut') {
+      return callback('ALREADY_KICKED_OUT');
+    }
+    const timestamp = new Date().getTime();
+    const params = {
+      TableName: 'trainees',
+      Key: {
+        id: trainee.id,
+      },
+      ExpressionAttributeValues: {
+        ':status': [{
+          event: 'kickedOut',
+          createdAt: timestamp,
+        }],
+        ':currentStatus': 'kickedOut',
+        ':updatedAt': timestamp,
+      },
+      UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
+      ReturnValues: 'ALL_NEW',
+    };
+
+    DynamoDB.update(params, (error, result) => {
+      if (error) return;
+      const subject = `تمّ استبعادك من البرنامج التدريبي!`;
+      const message = `<div style="direction: rtl"><br />${trainee.fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك باستبعادك من البرنامج التدريبي لعدم تفاعلك، نرجو أن نراك مجتهدًا في القادم من البرامج.<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
+      const emailParams = {
+        Destination: {
+          ToAddresses: [trainee.email],
+        },
+        Message: {
+          Body: {
+            Html: {
+              Data: message,
+              Charset: 'utf-8'
+            }
+          },
+          Subject: {
+            Data: subject,
+            Charset: 'utf-8'
+          }
+        },
+        Source: process.env.SENDER_EMAIL,
+        ReplyToAddresses: [process.env.CONTACT_EMAIL]
+      };
+      SES.sendEmail(emailParams).promise().then((success) => {
+        console.log(success);
+        callback(null, success);
+      });
+    });
+  });
+};
+
+const kickOutInactiveTrainees = () => {
+  collectTraineesData((data) => {
+    for (var i = data.length - 1; i >= 0; i--) {
+      // TODO: Make a function to decide inactive.
+      if (data[i].expired == 7 && data[i].email.indexOf('yopmail') < 0) {
+        kickOutTrainee(data[i].id, (error, success) => {
+          console.log('error', error);
+          console.log('success', success);
+        });
+      }
+    }
+  });
+};
+
+const groupifyTrainees = () => {
+  collectTraineesData((data) => {
+    console.log(data.length);
+    // console.log(data);
+    data = data.sort((a, b) => {
+      return b.accepted - a.accepted;
+    });
+    let groups = [];
+    let g = 0;
+    for (var i = 0; i < 16; i++) {
+      groups[i] = [];
+    }
+    for (var i = 0; i < data.length; i++) {
+      groups[g].push({
+        accepted: data[i].accepted,
+        email: data[i].email,
+        fullname: data[i].fullname,
+      });
+      g++;
+      if (g % 16 == 0) g = 0;
+    }
+    console.log(groups);
+  });
+};
+
+// groupifyTrainees();
+
+// listIndividualTasks((individualTasks) => {
+//   console.log(individualTasks.length);
+// });
 
 // let globalTrainees = [];
-// let tasks = [];
 // let globalData = [];
 
 // function scanDeliveredTasks() {
@@ -1619,130 +1760,43 @@ module.exports.extendIndividualTask = (event, context, callback) => {
 //     }
 // }
 
-// function onScanTasks(err, data) {
-//     // console.log(data);
-//     if (err) {
-//         // console.error("Unable to scan the table. Error JSON:", JSON.stringify(err, null, 2));
-//         // console.log('err', err);
-//     } else {
-//         // print all the movies
-//         // console.log("Scan succeeded.");
-//         // console.log(data.Items);
-//         tasks = tasks.concat(data.Items);
+//           console.log(Object.keys(globalData).length);
+//           console.log(globalData);
+//           // let kickedOut = [];
 
-//         // continue scanning if we have more movies, because
-//         // scan can retrieve a maximum of 1MB of data
-//         if (typeof data.LastEvaluatedKey != "undefined") {
-//             // console.log("Scanning for more...");
-//             scanParams.ExclusiveStartKey = data.LastEvaluatedKey;
-//             DynamoDB.scan(scanParams, onScanTasks);
-//         } else {
-
-//           globalTrainees = globalTrainees.filter((trainee) => {
-//             return trainee.currentStatus == 'accepted';
-//           });
-          
-//           // console.log(globalTrainees.length);
-//           // console.log(tasks.length);
-//           // for (var i = tasks.length - 1; i >= 0; i--) {
-//           //   const task = tasks[i];
-//           //   if (!globalData.includes(task.assignedTo.id)) {
-//           //     globalData[task.assignedTo.id] = {
-//           //       sent: 0,
-//           //       delivered: 0,
-//           //       accepted: 0,
-//           //       rejected: 0,
-//           //       expired: 0,
-//           //     };
-//           //   }
-//           //   // globalData[task.assignedTo.id][task.currentStatus] = globalData[task.assignedTo.id][task.currentStatus] + 1;
-//           //   // globalData[task.assignedTo.id][task.currentStatus] = task.id;
-//           //   // console.log(globalData[task.assignedTo.id][task.currentStatus], task.assignedTo.id, task.currentStatus);
-//           //   // globalData[task.assignedTo.id]
-//           //   if (task.currentStatus == 'accepted') {
-//           //     if (task.assignedTo.id == 'd8971ca6-a69b-4824-9276-2ef8d51f6ba8') console.log(task.id, 'HHHHEEEEEYYYYY!');
-//           //     globalData[task.assignedTo.id].accepted = globalData[task.assignedTo.id].accepted++;
+//           // for (var key in globalData) {
+//           //   var item = globalData[key];
+//           //   // console.log(item);
+//           //   if (item.expired == 9 && item.email.indexOf('yopmail.com') < 0) {
+//           //     kickedOut.push(item);
+//           //     // console.log(kickedOut);
+//           //     // console.log(`${item.fullname}\n${item.email}\n`);
 //           //   }
 //           // }
-          
-//           for (var i = globalTrainees.length - 1; i >= 0; i--) {
-//             const t = globalTrainees[i];
-//             globalData[t.id] = {
-//               id: t.id,
-//               fullname: t.fullname,
-//               email: t.email,
-//               sent: tasks.filter((ts) => {
-//                 return ts.assignedTo.id == t.id && ts.currentStatus == 'sent';
-//               }).length,
-//               delivered: tasks.filter((ts) => {
-//                 return ts.assignedTo.id == t.id && ts.currentStatus == 'delivered';
-//               }).length,
-//               accepted: tasks.filter((ts) => {
-//                 return ts.assignedTo.id == t.id && ts.currentStatus == 'accepted';
-//               }).length,
-//               rejected: tasks.filter((ts) => {
-//                 return ts.assignedTo.id == t.id && ts.currentStatus == 'rejected';
-//               }).length,
-//               expired: tasks.filter((ts) => {
-//                 return ts.assignedTo.id == t.id && ts.currentStatus == 'expired';
-//               }).length,
-//             };
-//           }
 
-//           // console.log(globalData);
-//           let kickedOut = [];
-
-//           for (var key in globalData) {
-//             var item = globalData[key];
-//             // console.log(item);
-//             if (item.expired == 9 && item.email.indexOf('yopmail.com') < 0) {
-//               kickedOut.push(item);
-//               // console.log(kickedOut);
-//               // console.log(`${item.fullname}\n${item.email}\n`);
-//             }
-//           }
-
-//           console.log(kickedOut.length);
+//           // console.log(kickedOut.length);
 //           // return;
 
 //           // TEST START
 
-//           const timestamp = new Date().getTime();
+//           // const timestamp = new Date().getTime();
 
-//           for (var i = kickedOut.length - 1; i >= 0; i--) {
-//             // kickedOut[i]
-
-//             const params = {
-//               TableName: 'trainees',
-//               Key: {
-//                 id: kickedOut[i].id,
-//               },
-//               ExpressionAttributeValues: {
-//                 ':status': [{
-//                   event: 'kickedOut',
-//                   createdAt: timestamp,
-//                 }],
-//                 ':currentStatus': 'kickedOut',
-//                 ':updatedAt': timestamp,
-//               },
-//               UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
-//               ReturnValues: 'ALL_NEW',
-//             };
-
-//             DynamoDB.update(params, (error, result) => {
-//               // return callback(null, makeResponse(error ? 408 : 204));
-//               console.log(error);
-//               console.log(result);
-//             });
-
-
-//           }
+//           // for (var i = kickedOut.length - 1; i >= 0; i--) {
+//           //   // kickedOut[i]
+//           // }
 
 //           // TEST END
 //         }
 //     }
 // }
 
+// Group trainees.
+// listTrainees((trainees) => {
+//   globalTrainees = trainees;
+//   DynamoDB.scan(scanParams, onScanTasks);
+// });
+
+// Kick inactive trainees.
 // listTrainees((trainees) => {
 //   // globalTrainees = trainees;
 //   // DynamoDB.scan(scanParams, onScanTasks);
