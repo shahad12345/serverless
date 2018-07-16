@@ -515,7 +515,7 @@ module.exports.notifyWhenIndividualTaskCreated = (event, context, callback) => {
       console.log('TASK_CANNOT_BE_FOUND');
       return callback('TASK_CANNOT_BE_FOUND');
     }
-    var subject = `مهمّة جديدة: ${individualTask.title}!`;
+    var subject = `مهمّة فرديّة جديدة: ${individualTask.title}!`;
     var feedback = (!individualTask.feedback || individualTask.feedback == '') ? '' : `${individualTask.feedback}<br /><br />`;
     var references = '';
 
@@ -529,7 +529,7 @@ module.exports.notifyWhenIndividualTaskCreated = (event, context, callback) => {
       references += '<br /><br />';
     }
 
-    var message = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />${feedback}مهمّة جديدة بانتظار إبداعاتِك ويجب تسليمها قبل مرور ${individualTask.expiresAfter} ساعة من الآن. ${individualTask.description}<br /><br />${references}في حال رغبت بتسليم المهمّة، تفضّل بزيارة الرابط:<br /><a href="https://cloudsystems.sa/deliver-individual-task?id=${individualTask.id}">https://cloudsystems.sa/deliver-individual-task?id=${individualTask.id}</a><br /><br />وفي حال احتجت لمساعدةٍ فلا تتوانى بالبحث عنها في قناة المسار ${individualTask.channel} في تطبيق Slack.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
+    var message = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />${feedback}مهمّة فرديّة جديدة بانتظار إبداعاتِك ويجب تسليمها قبل مرور ${individualTask.expiresAfter} ساعة من الآن. ${individualTask.description}<br /><br />${references}في حال رغبت بتسليم المهمّة، تفضّل بزيارة الرابط:<br /><a href="https://cloudsystems.sa/deliver-individual-task?id=${individualTask.id}">https://cloudsystems.sa/deliver-individual-task?id=${individualTask.id}</a><br /><br />وفي حال احتجت لمساعدةٍ فلا تتوانى بالبحث عنها في قناة المسار ${individualTask.channel} في تطبيق Slack.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
 
     // Send the message.
     const emailParams = {
@@ -588,8 +588,8 @@ module.exports.notifyWhenIndividualTaskExpired = (event, context, callback) => {
   getIndividualTaskById(id, (individualTask) => {
     // Check if the task is not delivered.
     if (individualTask.currentStatus != 'sent') return callback('TASK_HAS_NOT_EXPIRED');
-    const assignedToSubject = `انتهت فترة تسليم المهمّة: ${individualTask.title}!`;
-    const assignedToMessage = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك بانتهاء فترة تسليم المهمّة: ${individualTask.title}؛ إذ لم تصل إلينا إجابتك على الرغم من مرور ${individualTask.expiresAfter} ساعة من إسناد المهمّة إليك. نرجو منك فيما تبقّى من مهامٍ أن تجتهد أكثر وتبادر بالتسليم قبل انتهاء الوقت. هذه الرسالة هي للإخطار فقط ولا تتطلّب منك الرد عليها أو اتّخاذ أيّ إجراء.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /><div style="color: #666">${individualTask.id}</div></div>`;
+    const assignedToSubject = `انتهت فترة تسليم المهمّة الفرديّة: ${individualTask.title}!`;
+    const assignedToMessage = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك بانتهاء فترة تسليم المهمّة افرديّة: ${individualTask.title}؛ إذ لم تصل إلينا إجابتك على الرغم من مرور ${individualTask.expiresAfter} ساعة من إسناد المهمّة إليك. نرجو منك فيما تبقّى من مهامٍ أن تجتهد أكثر وتبادر بالتسليم قبل انتهاء الوقت. هذه الرسالة هي للإخطار فقط ولا تتطلّب منك الرد عليها أو اتّخاذ أيّ إجراء.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /><div style="color: #666">${individualTask.id}</div></div>`;
 
     // Send the message.
     const emailParams = {
@@ -729,12 +729,12 @@ module.exports.deliverIndividualTask = (event, context, callback) => {
           Message: {
             Body: {
               Html: {
-                Data: `<div style="direction: rtl"><br />${mentor.fullname}، السلام عليكم.<br /><br />يسرّنا إبلاغك بأنّ ${individualTask.assignedTo.fullname} قد قام بتسليم المهمّة: ${individualTask.title}، وفي ما يلي الروابط التي زوّدنا بها:<br />${answersHTML}<br /><br />إذا كنت ترى بأنّ تنفيذ المهمّة كان على أكمل وجهٍ، فانقر على الرابط التالي لقبولها:<br />${acceptUrl}<br /><br />وإذا كنت ترى بأنّ تنفيذ المهمّة لم يكن بالشكل المطلوب، فانقر على الرابط التالي لرفضها:<br />${rejectUrl}<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`,
+                Data: `<div style="direction: rtl"><br />${mentor.fullname}، السلام عليكم.<br /><br />يسرّنا إبلاغك بأنّ ${individualTask.assignedTo.fullname} قد قام بتسليم المهمّة الفرديّة: ${individualTask.title}، وفي ما يلي الروابط التي زوّدنا بها:<br />${answersHTML}<br /><br />إذا كنت ترى بأنّ تنفيذ المهمّة كان على أكمل وجهٍ، فانقر على الرابط التالي لقبولها:<br />${acceptUrl}<br /><br />وإذا كنت ترى بأنّ تنفيذ المهمّة لم يكن بالشكل المطلوب، فانقر على الرابط التالي لرفضها:<br />${rejectUrl}<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`,
                 Charset: 'utf-8'
               }
             },
             Subject: {
-              Data: `${individualTask.assignedTo.fullname} سلّم المهمّة: ${individualTask.title}!`,
+              Data: `${individualTask.assignedTo.fullname} سلّم المهمّة الفرديّة: ${individualTask.title}!`,
               Charset: 'utf-8'
             }
           },
@@ -777,10 +777,10 @@ module.exports.correctIndividualTask = (event, context, callback) => {
     // Check if the task is already corrected. 409
     if (individualTask.currentStatus == 'accepted' || individualTask.currentStatus == 'rejected') return callback(null, makeResponse(409));
     // Check if the user is not authorized (not among the mentors). 403
-    const mentorIds = individualTask.mentors.map((mentor) => {
-      return mentor.id;
-    });
-    if (mentorIds.indexOf(authorizer.id) < 0) return callback(null, makeResponse(403));
+    // const mentorIds = individualTask.mentors.map((mentor) => {
+    //   return mentor.id;
+    // });
+    // if (mentorIds.indexOf(authorizer.id) < 0) return callback(null, makeResponse(403));
     // Check if the task has expired.
     if (individualTask.currentStatus == 'expired') return callback(null, makeResponse(408));
     if (individualTask.currentStatus != 'delivered') return callback(null, makeResponse(406));
@@ -803,8 +803,8 @@ module.exports.correctIndividualTask = (event, context, callback) => {
       ReturnValues: 'ALL_NEW',
     };
 
-    var subject = (action == 'accept') ? `رائع! تم قبول إجابتك للمهمّة: ${individualTask.title}!` : `لم يتم قبول إجابتك للمهمّة: ${individualTask.title}!`;
-    var message = (action == 'accept') ? `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يسرّنا إبلاغك بأنّه تم قبول إجابتك للمهمّة: ${individualTask.title}؛ وبذلك تحصل على مهارة ${individualTask.skill}! استمر!<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>` : `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك بأنّه لم يتم قبول إجابتك للمهمّة: ${individualTask.title}؛ وبذلك لا تحصل على مهارة ${individualTask.skill}. لا بأس، استمر بالمحاولة.<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
+    var subject = (action == 'accept') ? `رائع! تم قبول إجابتك للمهمّة الفرديّة: ${individualTask.title}!` : `لم يتم قبول إجابتك للمهمّة الفرديّة: ${individualTask.title}!`;
+    var message = (action == 'accept') ? `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يسرّنا إبلاغك بأنّه تم قبول إجابتك للمهمّة الفرديّة: ${individualTask.title}؛ وبذلك تحصل على مهارة ${individualTask.skill}! استمر!<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>` : `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك بأنّه لم يتم قبول إجابتك للمهمّة: ${individualTask.title}؛ وبذلك لا تحصل على مهارة ${individualTask.skill}. لا بأس، استمر بالمحاولة.<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
 
     DynamoDB.update(params, (error, result) => {
       const emailParams = {
@@ -1497,8 +1497,8 @@ module.exports.extendIndividualTask = (event, context, callback) => {
       ReturnValues: 'ALL_NEW',
     };
 
-    const subject = `تمّ تمديد فترة الإجابة للمهمّة: ${individualTask.title}!`;
-    const message = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يسرّنا إبلاغك بتمديد فترة تسليم إجابة المهمّة: ${individualTask.title}؛ علمًا أنّ تسليم الإجابة يكون من ذات الرابط السابق.<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /><div style="color: #666">${individualTask.id}</div></div>`;
+    const subject = `تمّ تمديد فترة الإجابة للمهمّة الفرديّة: ${individualTask.title}!`;
+    const message = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يسرّنا إبلاغك بتمديد فترة تسليم إجابة المهمّة الفرديّة: ${individualTask.title}؛ علمًا أنّ تسليم الإجابة يكون من ذات الرابط السابق.<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /><div style="color: #666">${individualTask.id}</div></div>`;
 
     DynamoDB.update(params, (error, result) => {
       const emailParams = {
@@ -1671,6 +1671,9 @@ const kickOutInactiveTrainees = () => {
   collectTraineesData((data) => {
     for (var i = data.length - 1; i >= 0; i--) {
       // TODO: Make a function to decide inactive.
+      // if (data[i].expired >= 5) {
+      //   console.log(`${data[i].total} e:${data[i].expired} a:${data[i].accepted} r:${data[i].rejected} ${data[i].email}`);
+      // }
       if (data[i].expired == 7 && data[i].email.indexOf('yopmail') < 0) {
         kickOutTrainee(data[i].id, (error, success) => {
           console.log('error', error);
@@ -1706,6 +1709,35 @@ const groupifyTrainees = () => {
   });
 };
 
+const stringifyDeliveredTasks = () => {
+  listIndividualTasks((tasks) => {
+    tasks = tasks.filter((task) => {
+      return task.currentStatus == 'delivered' && task.channel.indexOf('DevOpser') < 0;
+    });
+    console.log(tasks.length);
+    for (var i = tasks.length - 1; i >= 0; i--) {
+      const task = tasks[i];
+      const acceptUrl = `https://cloudsystems.sa/correct-individual-task?id=${task.id}&action=accept`;
+      const rejectUrl = `https://cloudsystems.sa/correct-individual-task?id=${task.id}&action=reject`;
+      console.log(`🔵🔵🔵\n\n`);
+      console.log(`😊 ${task.assignedTo.fullname}`);
+      console.log(`${task.channel}`);
+      console.log(`${task.title}`);
+
+      console.log(`الإجابات`);
+      for (var j = task.answers.length - 1; j >= 0; j--) {
+        console.log(`${task.answers[j].title}`);
+        console.log(`${task.answers[j].url}`);
+      }
+      console.log(`\n👍 ${acceptUrl}`);
+      console.log(`👎 ${rejectUrl}`);
+      console.log(`\n\n`);
+    }
+  });
+}
+
+// kickOutInactiveTrainees();
+// stringifyDeliveredTasks();
 // groupifyTrainees();
 
 // listIndividualTasks((individualTasks) => {
@@ -1719,122 +1751,10 @@ const groupifyTrainees = () => {
 //   return DynamoDB.scan(scanParams, onScanDeliveredTasks);
 // }
 
-// function onScanDeliveredTasks(err, data) {
-//     console.log(data);
-//     if (err) {
-//         // console.error("Unable to scan the table. Error JSON:", JSON.stringify(err, null, 2));
-//         console.log('err', err);
-//     } else {
-//         // print all the movies
-//         console.log("Scan succeeded.");
-//         // console.log(data.Items);
-//         tasks = tasks.concat(data.Items);
-
-//         // continue scanning if we have more movies, because
-//         // scan can retrieve a maximum of 1MB of data
-//         if (typeof data.LastEvaluatedKey != "undefined") {
-//             console.log("Scanning for more...");
-//             scanParams.ExclusiveStartKey = data.LastEvaluatedKey;
-//             DynamoDB.scan(scanParams, onScanDeliveredTasks);
-//         } else {
-
-//           console.log(`🔴 المهام المعلّقة على الطريقة الواتسابيّة (${tasks.length}) 🔴\n\n`);
-//           // console.log(tasks.length);
-//           for (var i = tasks.length - 1; i >= 0; i--) {
-//             const task = tasks[i];
-//             const acceptUrl = `https://cloudsystems.sa/correct-individual-task?id=${task.id}&action=accept`;
-//             const rejectUrl = `https://cloudsystems.sa/correct-individual-task?id=${task.id}&action=reject`;
-//             console.log(`🔵🔵🔵\n\n`);
-//             console.log(`😊 ${task.assignedTo.fullname}`);
-//             console.log(`${task.title}`);
-
-//             console.log(`الإجابات`);
-//             for (var j = task.answers.length - 1; j >= 0; j--) {
-//               console.log(`${task.answers[j].title}`);
-//               console.log(`${task.answers[j].url}`);
-//             }
-//             console.log(`\n👍 ${acceptUrl}`);
-//             console.log(`👎 ${rejectUrl}`);
-//             console.log(`\n\n`);
-//           }
-//         }
-//     }
-// }
-
-//           console.log(Object.keys(globalData).length);
-//           console.log(globalData);
-//           // let kickedOut = [];
-
-//           // for (var key in globalData) {
-//           //   var item = globalData[key];
-//           //   // console.log(item);
-//           //   if (item.expired == 9 && item.email.indexOf('yopmail.com') < 0) {
-//           //     kickedOut.push(item);
-//           //     // console.log(kickedOut);
-//           //     // console.log(`${item.fullname}\n${item.email}\n`);
-//           //   }
-//           // }
-
-//           // console.log(kickedOut.length);
-//           // return;
-
-//           // TEST START
-
-//           // const timestamp = new Date().getTime();
-
-//           // for (var i = kickedOut.length - 1; i >= 0; i--) {
-//           //   // kickedOut[i]
-//           // }
-
-//           // TEST END
-//         }
-//     }
-// }
-
 // Group trainees.
 // listTrainees((trainees) => {
 //   globalTrainees = trainees;
 //   DynamoDB.scan(scanParams, onScanTasks);
-// });
-
-// Kick inactive trainees.
-// listTrainees((trainees) => {
-//   // globalTrainees = trainees;
-//   // DynamoDB.scan(scanParams, onScanTasks);
-//   const ts = trainees.filter((t) => {
-//     return t.currentStatus == 'kickedOut';
-//   });
-
-//   for (var i = ts.length - 1; i >= 0; i--) {
-//     const email = ts[i].email;
-//     const fullname = ts[i].fullname;
-//     const subject = `تمّ استبعادك من البرنامج التدريبي!`;
-//     const message = `<div style="direction: rtl"><br />${fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك باستبعادك من البرنامج التدريبي لعدم تفاعلك، نرجو أن نراك مجتهدًا في القادم من البرامج.<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
-
-//     const emailParams = {
-//       Destination: {
-//         ToAddresses: [email],
-//       },
-//       Message: {
-//         Body: {
-//           Html: {
-//             Data: message,
-//             Charset: 'utf-8'
-//           }
-//         },
-//         Subject: {
-//           Data: subject,
-//           Charset: 'utf-8'
-//         }
-//       },
-//       Source: process.env.SENDER_EMAIL,
-//       ReplyToAddresses: [process.env.CONTACT_EMAIL]
-//     };
-//     SES.sendEmail(emailParams).promise().then((success) => {
-//       console.log(success);
-//       // return callback(null, makeResponse(204));
-//     });
-//   }
 // });
 
 // scanDeliveredTasks();
