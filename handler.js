@@ -282,6 +282,7 @@ const listAssignees = (assignees) => {
 const getMentors = (emails, mentors) => {
   var emailObject = {};
   var index = 0;
+  console.log('emails', emails);
   emails.forEach(function(value) {
       index++;
       var emailKey = ":emailvalue"+index;
