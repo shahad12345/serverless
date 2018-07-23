@@ -1,0 +1,42 @@
+
+groups
+  id
+  name
+  members
+  createdAt
+  updatedAt
+
+groupTasks
+  id
+  groupId
+  assignees [{
+    role: 'leader',
+    id: '1234567890987654321',
+    email: 'helloworld@helloworld.com',
+  }],
+  ratings [{
+    id: '1234567890987654321',
+    email: 'helloworld@helloworld.com',
+    skills: [TEAM_LEADERSHIP],
+  }]
+  title
+  description
+  references:
+    [
+      title:
+      url:
+    ],
+  mentors
+  skills [
+    HELLO_WORLD,
+  ]
+  references
+  publicChannel
+  privateChannel
+  expiresAfter
+  statuses
+  currentStatus
+  answers
+  createdAt
+  updatedAt
+

@@ -88,6 +88,13 @@ functions:
           method: get
           cors: true
           authorizer: authContributor
+  stringifyDeliveredTasks:
+    handler: handler.stringifyDeliveredTasks
+    events:
+      - http:
+          path: delivered-tasks
+          method: get
+          cors: true
   listIndividualTasks:
     handler: handler.listIndividualTasks
     events:

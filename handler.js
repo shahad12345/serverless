@@ -1387,11 +1387,6 @@ module.exports.createIndividualTask = (event, context, callback) => {
       });
     });
   });
-
-  // Validate email, mobile, expectedGraduationDate, and youtubeVideoUrl.
-  // if (validateEmail(email) === false || validateMobile(mobile) == false || validateDate(expectedGraduationDate) == false || validateYoutubeVideoUrl(youtubeVideoUrl) == false) {
-  //   return callback(null, makeResponse(406));
-  // }
 };
 
 module.exports.authContributorInfo = (event, context, callback) => {
@@ -1525,33 +1520,7 @@ module.exports.extendIndividualTask = (event, context, callback) => {
       });
     });
   });
-}
-
-// const scanParams = {
-//   TableName: 'trainees',
-//     FilterExpression: 'attribute_not_exists(deletedAt) and currentStatus = :currentStatus',
-//     ExpressionAttributeValues: {
-//       ':currentStatus': 'accepted',
-//     },
-// };
-
-// let skilledTrainees = [];
-
-// DynamoDB.scan(scanParams, (error, result) => {
-//   // console.log(result.Items);
-//   for (var i = result.Items.length - 1; i >= 0; i--) {
-//     // if (result.Items[i].skills) {
-//       // skilledTrainees.push(result.Items[i]);
-//       let skills = result.Items[i].skills ? result.Items[i].skills.join(',') : '';
-//       let skillsCount = result.Items[i].skills ? result.Items[i].skills.length : 0;
-//       console.log(`${result.Items[i].fullname}\t${result.Items[i].email}\t${skillsCount}\t${skills}`);
-//     // }
-//   }
-//   // console.log(skilledTrainees.length);
-// });
-//
-
-// const fetchIndividualTasks = (callback) => {
+};
 
 const listIndividualTasks = (individualTasks) => {
   let tasks = [];
@@ -1670,11 +1639,7 @@ const kickOutTrainee = (id, callback) => {
 const kickOutInactiveTrainees = () => {
   collectTraineesData((data) => {
     for (var i = data.length - 1; i >= 0; i--) {
-      // TODO: Make a function to decide inactive.
-      // if (data[i].expired >= 5) {
-      //   console.log(`${data[i].total} e:${data[i].expired} a:${data[i].accepted} r:${data[i].rejected} ${data[i].email}`);
-      // }
-      if (data[i].expired == 7 && data[i].email.indexOf('yopmail') < 0) {
+      if (data[i].expired >= 7 && data[i].email.indexOf('yopmail') < 0) {
         kickOutTrainee(data[i].id, (error, success) => {
           console.log('error', error);
           console.log('success', success);
@@ -1684,87 +1649,159 @@ const kickOutInactiveTrainees = () => {
   });
 };
 
-const groupifyTrainees = () => {
+const getBestGroup = (groups) => {
+  var leastScore = 999;
+  var bestGroup = 0;
+  for (var g=0; g<groups.length; g++) {
+    var currentScore = 0;
+    for (var m=0; m<groups[g].length; m++) {
+      currentScore += groups[g][m].accepted;
+    }
+    console.log(g, currentScore);
+    if (currentScore < leastScore) {
+      leastScore = currentScore;
+      bestGroup = g;
+    }
+  }
+  return bestGroup;
+}
+
+const groupifyTrainees = (callback) => {
   collectTraineesData((data) => {
-    console.log(data.length);
     // console.log(data);
+    data = data.filter((item) => {
+      return item.email.indexOf('yopmail') < 0;
+    });
+
     data = data.sort((a, b) => {
       return b.accepted - a.accepted;
     });
+
+    console.log(data.length);
+
+    let membersCount = 0;
+    let groupsCount = 0;
+
+    for (var z=3; z<=7; z++) {
+      if (data.length % z == 0) {
+        membersCount = z;
+        groupsCount = data.length/z;
+        break;
+      }
+    }
+
     let groups = [];
-    let g = 0;
-    for (var i = 0; i < 16; i++) {
+
+    if (membersCount == 0 || groupsCount == 0) {
+      return callback('CANNOT_GROUPIFY_TRAINEES');
+    }
+
+    for (var i = 0; i < groupsCount; i++) {
       groups[i] = [];
     }
+
     for (var i = 0; i < data.length; i++) {
+      var g = getBestGroup(groups);
       groups[g].push({
         accepted: data[i].accepted,
         email: data[i].email,
         fullname: data[i].fullname,
       });
-      g++;
-      if (g % 16 == 0) g = 0;
     }
+
     console.log(groups);
+    console.log(groupsCount);
+    console.log(membersCount);
+
+    for (var i = 0; i < groups.length; i++) {
+      console.log(i+1);
+      for (var j=0; j < groups[i].length; j++) {
+        console.log(groups[i][j].fullname);
+      }
+      console.log(`\n`);
+    }
   });
 };
 
-const stringifyDeliveredTasks = () => {
+const stringifyDeliveredTasks = (callback) => {
   listIndividualTasks((tasks) => {
     tasks = tasks.filter((task) => {
-      return task.currentStatus == 'delivered' && task.channel.indexOf('DevOpser') < 0;
+      return task.currentStatus == 'delivered';
     });
-    console.log(tasks.length);
+    let message = `<html dir="rtl"><head><meta charset="UTF-8"></head><body>${tasks.length}\n\n`;
     for (var i = tasks.length - 1; i >= 0; i--) {
       const task = tasks[i];
       const acceptUrl = `https://cloudsystems.sa/correct-individual-task?id=${task.id}&action=accept`;
       const rejectUrl = `https://cloudsystems.sa/correct-individual-task?id=${task.id}&action=reject`;
-      console.log(`🔵🔵🔵\n\n`);
-      console.log(`😊 ${task.assignedTo.fullname}`);
-      console.log(`${task.channel}`);
-      console.log(`${task.title}`);
+      message += `🔵🔵🔵<br /><br />`;
+      message += `😊 ${task.assignedTo.fullname}<br />`;
+      message += `${task.channel}<br />`;
+      message += `${task.title}<br />`;
 
-      console.log(`الإجابات`);
+      message += `الإجابات<br /><br />`;
+      const baseUrl = 'https://d2hbxkrooc.execute-api.eu-west-1.amazonaws.com/dev/answers';
+  
       for (var j = task.answers.length - 1; j >= 0; j--) {
-        console.log(`${task.answers[j].title}`);
-        console.log(`${task.answers[j].url}`);
+        message += `${task.answers[j].title}<br />`;
+        message += `<a href="${baseUrl}?id=${task.id}&answer=${j}">${task.answers[j].url}</a><br />`;
       }
-      console.log(`\n👍 ${acceptUrl}`);
-      console.log(`👎 ${rejectUrl}`);
-      console.log(`\n\n`);
+      message += `<br />👍 <a href="${acceptUrl}">${acceptUrl}</a><br />`;
+      message += `👎 <a href="${rejectUrl}">${rejectUrl}</a><br />`;
+      message += `<br /><br />`;
     }
+    message += '</body></html>';
+    callback(message);
   });
 }
 
-// kickOutInactiveTrainees();
-// stringifyDeliveredTasks();
-// groupifyTrainees();
+const addMentorToIndividualTasksBasedOnSkill = (email, skill, callback) => {
+  getContributorByEmail(email, (mentor) => {
+    if (!mentor) return callback('MENTOR_CANNOT_BE_FOUND');
+    listIndividualTasks((tasks) => {
+      tasks = tasks.filter((task) => {
+        return task.currentStatus == 'sent' && task.skill == skill;
+      });
+      if (tasks.length === 0) return callback('NO_TASKS_FOUND');
+      for (var i = tasks.length - 1; i >= 0; i--) {
+        const task = tasks[i];
+        const isEmailAmongMentors = task.mentors.filter((m) => {
+          return m.email == email;
+        }).length > 0;
+        console.log(email, isEmailAmongMentors, skill);
+        if (isEmailAmongMentors) continue;
+          const timestamp = new Date().getTime();
+          const params = {
+            TableName: 'individualTasks',
+            Key: {
+              id: task.id,
+            },
+            ExpressionAttributeValues: {
+              ':mentor': [mentor],
+              ':updatedAt': timestamp,
+            },
+            UpdateExpression: 'SET mentors = list_append(mentors, :mentor), updatedAt = :updatedAt',
+            ReturnValues: 'ALL_NEW',
+          };
+          DynamoDB.update(params, (error, success) => {
+            console.log('error', error);
+            console.log('success', success);
+          });
+          // TODO: Promise.all() and then callback.
+      }
+    });
+  });
+};
 
-// listIndividualTasks((individualTasks) => {
-//   console.log(individualTasks.length);
-// });
-
-// let globalTrainees = [];
-// let globalData = [];
-
-// function scanDeliveredTasks() {
-//   return DynamoDB.scan(scanParams, onScanDeliveredTasks);
-// }
-
-// Group trainees.
-// listTrainees((trainees) => {
-//   globalTrainees = trainees;
-//   DynamoDB.scan(scanParams, onScanTasks);
-// });
-
-// scanDeliveredTasks();
-
-  // DynamoDB.scan(scanParams, (error, result) => {
-  //   console.log(error);
-  //   return (error || result.Count > 0) ? callback(result.lastEvaluatedKey, result.Items) : callback(null, null);
-  // });
-// }
-
-// fetchIndividualTasks((lastEvaluatedKey, individualTasks) => {
-//   console.log(individualTasks);
-// });
+module.exports.stringifyDeliveredTasks = (event, context, callback) => {
+  stringifyDeliveredTasks((message) => {
+    console.log(message);
+    callback(null, {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'text/html',
+      },
+      body: message,
+    });
+  });
+};
