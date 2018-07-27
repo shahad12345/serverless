@@ -112,6 +112,8 @@ functions:
   #         cors: true
   sendEmail:
     handler: handler.sendEmail
+
+  # IndividualTasks
   createIndividualTask:
     handler: handler.createIndividualTask
     events:
@@ -126,7 +128,6 @@ functions:
     handler: handler.notifyWhenIndividualTaskCreated
   notifyWhenIndividualTaskExpired:
     handler: handler.notifyWhenIndividualTaskExpired
-  # TODO: deliver.
   deliverIndividualTask:
     handler: handler.deliverIndividualTask
     events:
@@ -135,7 +136,6 @@ functions:
           method: post
           cors: true
           authorizer: authTrainee
-  # TODO: correct.
   correctIndividualTask:
     handler: handler.correctIndividualTask
     events:
@@ -152,6 +152,23 @@ functions:
           method: post
           cors: true
           authorizer: authContributor
+
+  # groupTasks
+  createGroupTasks:
+    handler: handler.createGroupTasks
+    events:
+      - http:
+          path: group-tasks
+          method: post
+          cors: true
+          authorizer: authContributor
+    environment:
+      AFTER_GROUP_TASK_CREATED_STATE_MACHINE_ARN: "arn:aws:states:#{AWS::Region}:#{AWS::AccountId}:stateMachine:afterGroupTaskCreatedStateMachine"
+  notifyWhenGroupTaskCreated:
+    handler: handler.notifyWhenGroupTaskCreated
+  notifyWhenGroupTaskExpired:
+    handler: handler.notifyWhenGroupTaskExpired
+
   authTraineeInfo:
     handler: handler.authTraineeInfo
     events:
@@ -214,13 +231,25 @@ stepFunctions:
             Type: Task
             Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyWhenIndividualTaskExpired"
             End: true
-  # test:
-  #   handler: handler.test
-  #   events:
-  #     - http:
-  #         path: test
-  #         method: get
-  #         cors: true
+    afterGroupTaskCreatedStateMachine:
+      name: afterGroupTaskCreatedStateMachine
+      definition:
+        Comment: A state machine happens after a group task is created.
+        StartAt: notifyWhenGroupTaskCreated
+        States:
+          notifyWhenGroupTaskCreated:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyWhenGroupTaskCreated"
+            Next: waitUntilExpiry
+          waitUntilExpiry:
+            Type: Wait
+            SecondsPath: "$.expiresAfterInSeconds"
+            Next: notifyWhenGroupTaskExpired
+          notifyWhenGroupTaskExpired:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-notifyWhenGroupTaskExpired"
+            End: true
+
 resources:
   Resources:
     GatewayResponseDefault4XX:
@@ -281,6 +310,38 @@ resources:
           ReadCapacityUnits: 5
           WriteCapacityUnits: 5
         TableName: individualTasks
+    GroupsDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        TableName: groups
+    GroupTasksDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: id
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        TableName: groupTasks
 custom:
   # stage: ${opt:stage}
   authorizer:

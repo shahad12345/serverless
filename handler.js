@@ -263,7 +263,16 @@ const listTrainees = (trainees) => {
   });
 };
 
-// TODO: This should be for everybody.
+// TODO: The callback should be like (error, success).
+const listGroups = (groups) => {
+  const scanParams = {
+    TableName: 'groups',
+  };
+  DynamoDB.scan(scanParams, (error, result) => {
+    return groups(result.Items);
+  });
+};
+
 const listAssignees = (assignees) => {
   const scanParams = {
     TableName: 'trainees',
@@ -576,7 +585,7 @@ module.exports.notifyWhenIndividualTaskCreated = (event, context, callback) => {
         console.log('error when updating db', error);
         return callback(null, {
           id: id,
-          expiresAfterInSeconds: individualTask.expiresAfter*60*60, // TODO: In seconds.
+          expiresAfterInSeconds: individualTask.expiresAfter*60*60,
         });
       });
     });
@@ -834,7 +843,7 @@ module.exports.correctIndividualTask = (event, context, callback) => {
         // Add the skill to the trainee.
         const timestamp = new Date().getTime();
         const params = {
-          TableName: 'trainees', // TODO: To be trainees.
+          TableName: 'trainees',
           Key: {
             id: individualTask.assignedTo.id,
           },
@@ -1523,11 +1532,13 @@ module.exports.extendIndividualTask = (event, context, callback) => {
 };
 
 const listIndividualTasks = (individualTasks) => {
+  console.log('listIndividualTasks');
   let tasks = [];
   const scanParams = {
     TableName: 'individualTasks',
   };
   function onScan(error, data) {
+    console.log('onScan');
     if (error) {
       return console.log('error', error);
     }
@@ -1544,10 +1555,12 @@ const listIndividualTasks = (individualTasks) => {
 
 const collectTraineesData = (callback) => {
   let data = [];
+  console.log('collectTraineesData');
   listIndividualTasks((individualTasks) => {
+    // console.log(individualTasks);
     listTrainees((trainees) => {
       trainees = trainees.filter((trainee) => {
-        return trainee.currentStatus == 'accepted' && trainee.email.indexOf('yopmail') < 0; // TODO:
+        return trainee.currentStatus == 'accepted' /*&& trainee.email.indexOf('yopmail') < 0*/; // TODO:
       });
       for (var i = trainees.length - 1; i >= 0; i--) {
         const trainee = trainees[i];
@@ -1637,6 +1650,7 @@ const kickOutTrainee = (id, callback) => {
 };
 
 const kickOutInactiveTrainees = () => {
+  console.log('kickOutInactiveTrainees');
   collectTraineesData((data) => {
     for (var i = data.length - 1; i >= 0; i--) {
       if (data[i].expired >= 7 && data[i].email.indexOf('yopmail') < 0) {
@@ -1649,16 +1663,17 @@ const kickOutInactiveTrainees = () => {
   });
 };
 
-const getBestGroup = (groups) => {
+const getBestGroup = (groups, membersCount) => {
   var leastScore = 999;
   var bestGroup = 0;
   for (var g=0; g<groups.length; g++) {
     var currentScore = 0;
+    var currentMembersCount = groups[g].length;
     for (var m=0; m<groups[g].length; m++) {
       currentScore += groups[g][m].accepted;
     }
     console.log(g, currentScore);
-    if (currentScore < leastScore) {
+    if (currentMembersCount < membersCount && currentScore < leastScore) {
       leastScore = currentScore;
       bestGroup = g;
     }
@@ -1668,16 +1683,14 @@ const getBestGroup = (groups) => {
 
 const groupifyTrainees = (callback) => {
   collectTraineesData((data) => {
-    // console.log(data);
+
     data = data.filter((item) => {
-      return item.email.indexOf('yopmail') < 0;
+      return item.email.indexOf('yopmail') >= 0;
     });
 
     data = data.sort((a, b) => {
       return b.accepted - a.accepted;
     });
-
-    console.log(data.length);
 
     let membersCount = 0;
     let groupsCount = 0;
@@ -1690,6 +1703,9 @@ const groupifyTrainees = (callback) => {
       }
     }
 
+    console.log('membersCount', membersCount);
+    console.log('groupsCount', groupsCount);
+
     let groups = [];
 
     if (membersCount == 0 || groupsCount == 0) {
@@ -1701,25 +1717,16 @@ const groupifyTrainees = (callback) => {
     }
 
     for (var i = 0; i < data.length; i++) {
-      var g = getBestGroup(groups);
+      var g = getBestGroup(groups, membersCount);
       groups[g].push({
+        id: data[i].id,
         accepted: data[i].accepted,
         email: data[i].email,
         fullname: data[i].fullname,
       });
     }
 
-    console.log(groups);
-    console.log(groupsCount);
-    console.log(membersCount);
-
-    for (var i = 0; i < groups.length; i++) {
-      console.log(i+1);
-      for (var j=0; j < groups[i].length; j++) {
-        console.log(groups[i][j].fullname);
-      }
-      console.log(`\n`);
-    }
+    callback(groups);
   });
 };
 
@@ -1792,6 +1799,50 @@ const addMentorToIndividualTasksBasedOnSkill = (email, skill, callback) => {
   });
 };
 
+const createGroup = (name, members, callback) => {
+
+  const id = uuid.v4();
+  const timestamp = new Date().getTime();
+
+  // Set the first member to be a leader.
+  for (var i=0; i<members.length; i++) {
+    members[i]['role'] = (i == 0) ? 'leader' : 'member';
+  }
+
+  const params = {
+      TableName: 'groups',
+      Item: {
+        id: id,
+        name: name,
+        members: members,
+        statuses: [
+          {
+            event: 'created',
+            createdAt: timestamp,
+          }
+        ],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    };
+
+    console.log(params);
+
+    DynamoDB.put(params, (error) => {
+      return callback(error);
+    });
+}
+
+// kickOutInactiveTrainees();
+// groupifyTrainees((groups) => {
+//   for (var g=0; g<groups.length; g++) {
+//     var name = String.fromCharCode(65 + g);
+//     createGroup(name, groups[g], (callback) => {
+//       console.log(callback);
+//     });
+//   }
+// });
+
 module.exports.stringifyDeliveredTasks = (event, context, callback) => {
   stringifyDeliveredTasks((message) => {
     console.log(message);
@@ -1805,3 +1856,224 @@ module.exports.stringifyDeliveredTasks = (event, context, callback) => {
     });
   });
 };
+
+// groupTasks
+//   id
+//   groupId
+//   assignees [{
+//     role: 'leader',
+//     id: '1234567890987654321',
+//     email: 'helloworld@helloworld.com',
+//   }],
+//   ratings [{
+//     id: '1234567890987654321',
+//     email: 'helloworld@helloworld.com',
+//     skills: [TEAM_LEADERSHIP],
+//   }]
+//   title
+//   description
+//   references:
+//     [
+//       title:
+//       url:
+//     ],
+//   mentors
+//   skills [
+//     HELLO_WORLD,
+//   ]
+//   references
+//   publicChannel
+//   privateChannel
+//   expiresAfter
+//   statuses
+//   currentStatus
+//   answers
+//   createdAt
+//   updatedAt
+
+const createGroupTasks = (createdById, title, feedback, description, references, mentorEmails, skills, publicChannel, privateChannel, expiresAfter, callback) => {
+
+  const id = uuid.v4();
+  description = description.replace(/(?:\r\n|\r|\n)/g, '<br />');
+  feedback = feedback.replace(/(?:\r\n|\r|\n)/g, '<br />');
+
+  getMentors(mentorEmails, (mentors) => {
+    if (mentors.length == 0) return callback('NO_MENTORS_FOUND');
+    listGroups((groups) => {
+      if (groups.length == 0) return callback('NO_GROUPS_FOUND');
+      
+        Promise.all(groups.map((group) => {
+          const id = uuid.v4();
+          const timestamp = new Date().getTime();
+          console.log('taskId', id);
+          console.log('taskTitle', title);
+          console.log('groups', group);
+          const params = {
+            TableName: 'groupTasks',
+            Item: {
+              id: id,
+              groupId: group.id,
+              title: title,
+              description: description,
+              mentors: mentors,
+              skills: skills,
+              references: references,
+              publicChannel: publicChannel,
+              privateChannel: privateChannel,
+              expiresAfter: expiresAfter,
+              assignees: group.members,
+              statuses: [
+                {
+                  event: 'created',
+                  createdAt: timestamp,
+                  createdBy: createdById,
+                }
+              ],
+              currentStatus: 'created',
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          };
+
+          // Since it is optional.
+          if (feedback && feedback != '') {
+            params.Item.feedback = feedback;
+          }
+
+          console.log('params', params);
+          return DynamoDB.put(params).promise().then((success) => {
+            console.log(process.env.AFTER_GROUP_TASK_CREATED_STATE_MACHINE_ARN);
+            return StepFunctions.startExecution({
+              stateMachineArn: process.env.AFTER_GROUP_TASK_CREATED_STATE_MACHINE_ARN,
+              input: JSON.stringify({
+                id: id,
+              }),
+            }).promise();
+            return true;
+          }).catch((error) => {
+            console.log('error1', error);
+            return error;
+          });
+        })).then((success) => {
+          return callback(null, success);
+        }).catch((error) => {
+          return callback(error);
+        });
+    });
+  });
+
+  // TODO: Validate mentors.
+  // TODO: Validate groups.
+  // TODO: Create group task.
+  // TODO: Calculate expiry.
+  // TODO: Update group leader.
+}
+
+// createGroupTasks('ahmed', 'title', 'feedback', 'description', ['ref1', 'ref2'], ['hossamzee@gmail.com'], ['WEBSITE_DEV'], 'developer', 'A', 60, (error, success) => {
+//   console.log(error);
+// });
+
+// module.exports.createGroupTask = (event, context, callback) => {
+
+//   const createdBy = event.requestContext.authorizer.id;
+
+//   try {
+//     var body = JSON.parse(event.body);
+//   } catch (error) {
+//     var body = null;
+//   }
+
+//   const timestamp = new Date().getTime();
+//   const title = body ? body.title : null;
+//   var feedback = body ? body.feedback : null;
+//   var description = body ? body.description : null;
+//   var mentorsString = body ? body.mentors : null;
+//   const skill = body ? body.skill : null;
+//   const referencesString = body ? body.references : null;
+//   const channel = body ? body.channel : null;
+//   const expiresAfter = body ? body.expiresAfter : null;
+
+//   if (!title || !description || !mentorsString || !skill || !channel || !expiresAfter) {
+//     return callback(null, makeResponse(400));
+//   }
+
+//   // Make some variables.
+//   mentorsString = mentorsString.toLowerCase();
+//   description = description.replace(/(?:\r\n|\r|\n)/g, '<br />');
+//   feedback = feedback.replace(/(?:\r\n|\r|\n)/g, '<br />');
+
+//   const mentorEmails = mentorsString.split(',').map(function(item) {
+//     return item.trim();
+//   });
+
+//   console.log('referencesString', referencesString);
+
+//   const references = parseReferences(referencesString);
+
+//   getMentors(mentorEmails, (mentors) => {
+//     if (mentors.length == 0) return callback(null, makeResponse(404)); // NO_MENTORS_FOUND
+//     listAssignees((trainees) => {
+//       if (trainees.length == 0) return callback(null, makeResponse(400)); // NO_TRAINEES_FOUND
+//       Promise.all(trainees.map((assignee) => {
+//         const id = uuid.v4();
+//         console.log('taskId', id);
+//         console.log('taskTitle', title);
+//         console.log('assignee', assignee);
+//         // TODO: Trainee should have only id, email, fullname.
+//         const trainee = {
+//           id: assignee.id,
+//           email: assignee.email,
+//           fullname: assignee.fullname,
+//         };
+//         const putParams = {
+//           TableName: 'individualTasks',
+//           Item: {
+//             id: id,
+//             title: title,
+//             description: description,
+//             mentors: mentors,
+//             skill: skill,
+//             references: references,
+//             channel: channel,
+//             expiresAfter: expiresAfter,
+//             assignedTo: trainee,
+//             statuses: [
+//               {
+//                 event: 'created',
+//                 createdAt: timestamp,
+//                 createdBy: createdBy,
+//               }
+//             ],
+//             currentStatus: 'created',
+//             createdAt: timestamp,
+//             updatedAt: timestamp,
+//           },
+//         };
+
+//         // Since it is optional.
+//         if (feedback && feedback != '') {
+//           putParams.Item.feedback = feedback;
+//         }
+
+//         console.log('params', putParams);
+//         return DynamoDB.put(putParams).promise().then((success) => {
+//           console.log(process.env.AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN);
+//           return StepFunctions.startExecution({
+//             stateMachineArn: process.env.AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN,
+//             input: JSON.stringify({
+//               id: id,
+//             }),
+//           }).promise();
+//         }).catch((error) => {
+//           console.log('error1', error);
+//           return error;
+//         });
+//       })).then((success) => {
+//         return callback(null, makeResponse(204));
+//       }).catch((error) => {
+//         console.log('error2', error);
+//         return callback(makeResponse(408, error));
+//       });
+//     });
+//   });
+// };
