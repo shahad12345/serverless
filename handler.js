@@ -598,7 +598,7 @@ module.exports.notifyWhenIndividualTaskExpired = (event, context, callback) => {
     // Check if the task is not delivered.
     if (individualTask.currentStatus != 'sent') return callback('TASK_HAS_NOT_EXPIRED');
     const assignedToSubject = `انتهت فترة تسليم المهمّة الفرديّة: ${individualTask.title}!`;
-    const assignedToMessage = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك بانتهاء فترة تسليم المهمّة افرديّة: ${individualTask.title}؛ إذ لم تصل إلينا إجابتك على الرغم من مرور ${individualTask.expiresAfter} ساعة من إسناد المهمّة إليك. نرجو منك فيما تبقّى من مهامٍ أن تجتهد أكثر وتبادر بالتسليم قبل انتهاء الوقت. هذه الرسالة هي للإخطار فقط ولا تتطلّب منك الرد عليها أو اتّخاذ أيّ إجراء.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /><div style="color: #666">${individualTask.id}</div></div>`;
+    const assignedToMessage = `<div style="direction: rtl"><br />${individualTask.assignedTo.fullname}، السلام عليكم.<br /><br />يؤسفنا إبلاغك بانتهاء فترة تسليم المهمّة الفرديّة: ${individualTask.title}؛ إذ لم تصل إلينا إجابتك على الرغم من مرور ${individualTask.expiresAfter} ساعة من إسناد المهمّة إليك. نرجو منك فيما تبقّى من مهامٍ أن تجتهد أكثر وتبادر بالتسليم قبل انتهاء الوقت. هذه الرسالة هي للإخطار فقط ولا تتطلّب منك الرد عليها أو اتّخاذ أيّ إجراء.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /><div style="color: #666">${individualTask.id}</div></div>`;
 
     // Send the message.
     const emailParams = {
@@ -863,6 +863,454 @@ module.exports.correctIndividualTask = (event, context, callback) => {
         });
       });
     });
+  });
+}
+
+const getGroupTaskById = (id, callback) => {
+    const scanParams = {
+      TableName: 'groupTasks',
+      KeyConditionExpression: 'id = :id',
+      ExpressionAttributeValues: {
+        ':id': id,
+      },
+    };
+    DynamoDB.query(scanParams, (error, result) => {
+      console.log('getGroupTaskById error', error);
+      return (error || result.Count == 0) ? callback(null) : callback(result.Items[0]);
+    });
+};
+
+const notifyWhenGroupTaskCreated = (id, callback) => {
+
+  getGroupTaskById(id, (groupTask) => {
+    if (!groupTask) {
+      return callback('TASK_CANNOT_BE_FOUND');
+    }
+    var subject = `مهمّة جماعيّة جديدة: ${groupTask.title}!`;
+    var feedback = (!groupTask.feedback || groupTask.feedback == '') ? '' : `${groupTask.feedback}<br /><br />`;
+    var references = '';
+
+    if (groupTask.references.length == 0) {
+      references = '';
+    } else {
+      references = 'المراجع:<br />';
+      for (var i = 0; i < groupTask.references.length; i++) {
+        references += `<br />- ${groupTask.references[i].title} (<a href="${groupTask.references[i].url}">${groupTask.references[i].url}</a>).`;
+      }
+      references += '<br /><br />';
+    }
+
+    const memberFullnames = groupTask.group.members.map((member) => {
+      return member.fullname;
+    }).join('، ');
+
+    const memberEmails = groupTask.group.members.map((member) => {
+      return member.email;
+    });
+
+    const leaderFullname = groupTask.group.members.filter((member) => {
+      return member.role == 'leader';
+    })[0].fullname;
+
+    // وإذا كنت قائدًا للمجموعة وأحسست بأنّك لا تستطيع قيادة المجموعة، تفضّل بزيارة الرابط (بعد مرور ساعة من قراءة هذه الرسالة كحدٍ أقصى):<br /><a href="https://cloudsystems.sa/quit-group-task?id=${groupTask.id}">https://cloudsystems.sa/quit-group-task?id=${groupTask.id}</a><br /><br />
+
+    var message = `<div style="direction: rtl"><br />أعضاء مجموعة ”${groupTask.group.name}“، السلام عليكم.<br /><br />${feedback}مهمّة جماعيّة جديدة بانتظار إبداعاتِ مجموعتكم ويجب تسليمها من قِبل قائد المجموعة قبل مرور ${groupTask.expiresAfter} ساعة من الآن. أعضاء مجموعة ”${groupTask.group.name}“ هم: ${memberFullnames}. سيكون قائد المجموعة لهذه المهمّة: ${leaderFullname}.<br /><br /> كقائدٍ للمجموعة يجب عليك التنسيق بينك وبين أعضاء المجموعة لفهم المتطلّبات، ومن ثمّ عليك تحديد الأدوار وتوزيع المهام، ومن ثمّ عليك متابعة سير المهام من خلال أيّ وسيلةٍ متاحةٍ، ولاحقًا عليكَ تسليم المهام التي تعاونتكم كمجموعةٍ عليها من خلال الرابط أسفل هذه الرسالة.<br /><br />${groupTask.description}<br /><br />${references}إذا كنت قائدًا للمجموعة ورغبت بتسليم المهمّة، تفضّل بزيارة الرابط:<br /><a href="https://cloudsystems.sa/deliver-group-task?id=${groupTask.id}">https://cloudsystems.sa/deliver-group-task?id=${groupTask.id}</a><br /><br />وفي حال احتجت لمساعدةٍ فلا تتوانى بالبحث عنها في القناة الخاصّة بمجموعتك ${groupTask.group.name} أو القناة العامّة للمسار ${groupTask.publicChannel} في تطبيق Slack.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
+
+    // Send the message.
+    const emailParams = {
+      Destination: {
+        ToAddresses: memberEmails,
+      },
+      Message: {
+        Body: {
+          Html: {
+            Data: message,
+            Charset: 'utf-8'
+          }
+        },
+        Subject: {
+          Data: subject,
+          Charset: 'utf-8'
+        }
+      },
+      Source: process.env.SENDER_EMAIL,
+      ReplyToAddresses: [process.env.CONTACT_EMAIL],
+    };
+    SES.sendEmail(emailParams, (error, response) => {
+      console.log('error sending email', error);
+      if (error) return callback('CANNOT_SEND_EMAIL');
+      const timestamp = new Date().getTime();
+      const params = {
+        TableName: 'groupTasks',
+        Key: {
+          id: id,
+        },
+        ExpressionAttributeValues: {
+          ':status': [{
+            event: 'sent',
+            createdAt: timestamp,
+          }],
+          ':updatedAt': timestamp,
+          ':currentStatus': 'sent',
+        },
+        UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
+        ReturnValues: 'ALL_NEW',
+      };
+
+      DynamoDB.update(params, (error, result) => {
+        console.log('error when updating db', error);
+        if (error) return callback('CANNOT_UPDATE_DATABASE');
+        return callback(null, {
+          id: id,
+          expiresAfterInSeconds: groupTask.expiresAfter*60, // TODO: Convert to seconds: groupTask.expiresAfter*60*60.
+        });
+      });
+    });
+  });
+};
+
+const notifyWhenGroupTaskExpired = (id, callback) => {
+  getGroupTaskById(id, (groupTask) => {
+    if (!groupTask) {
+      return callback('TASK_CANNOT_BE_FOUND');
+    }
+    // Check if the task is not delivered.
+    if (groupTask.currentStatus != 'sent') return callback('TASK_HAS_NOT_EXPIRED');
+
+    const subject = `انتهت فترة تسليم المهمّة الجماعيّة: ${groupTask.title}!`;
+    const message = `<div style="direction: rtl"><br />أعضاء مجموعة ”${groupTask.group.name}“، السلام عليكم.<br /><br />يؤسفنا إبلاغكم بانتهاء فترة تسليم المهمّة الجماعيّة: ${groupTask.title}؛ إذ لم تصل إلينا إجابتكم على الرغم من مرور ${groupTask.expiresAfter} ساعة من إسناد المهمّة إليكم. نرجو منكم فيما تبقّى من مهامٍ أن تجتهدوا أكثر وتبادروا بالتسليم قبل انتهاء الوقت. هذه الرسالة هي للإخطار فقط ولا تتطلّب منك الرد عليها أو اتّخاذ أيّ إجراء.<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /><div style="color: #666">${groupTask.id}</div></div>`;
+    
+    const memberEmails = groupTask.group.members.map((member) => {
+      return member.email;
+    });
+
+    // Send the message.
+    const emailParams = {
+      Destination: {
+        ToAddresses: memberEmails,
+      },
+      Message: {
+        Body: {
+          Html: {
+            Data: message,
+            Charset: 'utf-8'
+          }
+        },
+        Subject: {
+          Data: subject,
+          Charset: 'utf-8'
+        }
+      },
+      Source: process.env.SENDER_EMAIL,
+      ReplyToAddresses: [process.env.CONTACT_EMAIL],
+      // CcAddresses: [process.env.CONTACT_EMAIL],
+    };
+    SES.sendEmail(emailParams, (error, response) => {
+
+      const timestamp = new Date().getTime();
+      const params = {
+        TableName: 'groupTasks',
+        Key: {
+          id: id,
+        },
+        ExpressionAttributeValues: {
+          ':status': [{
+            event: 'expired',
+            createdAt: timestamp,
+          }],
+          ':updatedAt': timestamp,
+          ':currentStatus': 'expired',
+        },
+        UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
+        ReturnValues: 'ALL_NEW',
+      };
+
+      DynamoDB.update(params, (error, result) => {
+        return callback(null, {
+          id: id,
+        });
+      });
+      // callback(null, 'ASSIGNED_TO_NOTIFIED');
+    });
+    // TODO: FEAT: Notify the mentors.
+  });
+};
+
+const deliverGroupTask = (id, userId, answers, ratings, callback) => {
+
+  if (answers.length == 0) {
+    return callback('NO_ANSWERS_FOUND');
+  }
+
+  const timestamp = new Date().getTime();
+  var answersHTML = '';
+
+  for (var i = 0; i < answers.length; i++) {
+    answersHTML += `<br />- ${answers[i].title} (<a href="${answers[i].url}">${answers[i].url}</a>).`;
+  }
+
+  getGroupTaskById(id, (groupTask) => {
+    // Check if the task does not exist.
+    if (!groupTask) {
+      return callback('NO_TASKS_FOUND');
+    }
+
+    // Check if the task is already delivered. 409
+    if (groupTask.currentStatus == 'delivered' || groupTask.currentStatus == 'accepted' || groupTask.currentStatus == 'rejected') {
+      return callback('TASK_ALREADY_DELIVERED');
+    }
+
+    // Check if the user is not authorized. 403
+    const leaderId = groupTask.group.members.filter((member) => {
+      return member.role == 'leader';
+    })[0].id;
+
+    const leaderFullname = groupTask.group.members.filter((member) => {
+      return member.role == 'leader';
+    })[0].fullname;
+
+    if (leaderId != userId) {
+      return callback('TASK_IS_FORBIDDEN');
+    }
+
+    // Check if the task has expired.
+    if (groupTask.currentStatus == 'expired') return callback('TASK_HAS_EXPIRED');
+    if (!ratings || ratings.length == 0) return callback('INVALID_RATINGS');
+
+    // TODO: Check if the ratings are valid.
+    // const ratingIds = ratings.filter((r) => {
+    //   return r.id != leaderId;
+    // }).map((r) => {
+    //   return r
+    // });
+
+    const correctUrl = `https://cloudsystems.sa/correct-group-task?id=${id}`;
+
+    const params = {
+      TableName: 'groupTasks',
+      Key: {
+        id: id,
+      },
+      ExpressionAttributeValues: {
+        ':status': [{
+          event: 'delivered',
+          createdAt: timestamp,
+        }],
+        ':updatedAt': timestamp,
+        ':currentStatus': 'delivered',
+        ':answers': answers,
+        ':ratings': ratings,
+      },
+      UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, answers = :answers, ratings = :ratings, updatedAt = :updatedAt',
+      ReturnValues: 'ALL_NEW',
+    };
+
+    DynamoDB.update(params, (error, result) => {
+      Promise.all(groupTask.mentors.map((mentor) => {
+        const emailParams = {
+          Destination: {
+            ToAddresses: [mentor.email],
+          },
+          Message: {
+            Body: {
+              Html: {
+                Data: `<div style="direction: rtl"><br />${mentor.fullname}، السلام عليكم.<br /><br />يسرّنا إبلاغك بأنّ ${leaderFullname} (قائد مجموعة ”${groupTask.group.name}“) قد قام بتسليم المهمّة الجماعيّة: ${groupTask.title}، وفي ما يلي الروابط التي زوّدنا بها:<br />${answersHTML}<br /><br />لمراجعة تقييم المهارات الذي قام به قائد المجموعة وقبول الإجابة أو رفضها؛ انقر على الرابط التالي: <br />${correctUrl}<br /><br />كلّ الحظّ النبيل.<br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`,
+                Charset: 'utf-8'
+              }
+            },
+            Subject: {
+              Data: `${leaderFullname} سلّم المهمّة الجماعيّة: ${groupTask.title}!`,
+              Charset: 'utf-8'
+            }
+          },
+          Source: process.env.SENDER_EMAIL,
+          ReplyToAddresses: [process.env.CONTACT_EMAIL]
+        };
+        return SES.sendEmail(emailParams).promise();
+      })).then((success) => {
+        callback(null, true);
+      }).catch((error) => {
+        console.log('error', error);
+        callback('GONE');
+      });
+    });
+  });
+};
+
+const correctGroupTask = (id, userId, action, ratings, callback) => {
+
+  const timestamp = new Date().getTime();
+
+  var action = (action == 'accept') ? 'accept' : 'reject';
+
+  getGroupTaskById(id, (groupTask) => {
+    // Check if the task does not exist.
+    if (!groupTask) return callback('TASK_CANNOT_BE_FOUND');
+
+    // Check if the task is already corrected. 409
+    if (groupTask.currentStatus == 'accepted' || groupTask.currentStatus == 'rejected') {
+      return callback('TASK_ALREADY_CORRECTED');
+    }
+
+    const memberEmails = groupTask.group.members.map((member) => {
+      return member.email;
+    });
+
+    // Check if the task has expired.
+    if (groupTask.currentStatus == 'expired') return callback('TASK_HAS_EXPIRED');
+    if (groupTask.currentStatus != 'delivered') return callback('TASK_CANNOT_BE_CORRECTED');
+
+    const params = {
+      TableName: 'groupTasks',
+      Key: {
+        id: id,
+      },
+      ExpressionAttributeValues: {
+        ':status': [{
+          event: `${action}ed`,
+          createdAt: timestamp,
+          createdBy: userId,
+        }],
+        ':updatedAt': timestamp,
+        ':currentStatus': `${action}ed`,
+      },
+      UpdateExpression: 'SET statuses = list_append(statuses, :status), currentStatus = :currentStatus, updatedAt = :updatedAt',
+      ReturnValues: 'ALL_NEW',
+    };
+
+    var subject = (action == 'accept') ? `رائع! تم قبول إجابتكم للمهمّة الجماعيّة: ${groupTask.title}!` : `لم يتم قبول إجابتكم للمهمّة الجماعيّة: ${groupTask.title}!`;
+    var message = (action == 'accept') ? `<div style="direction: rtl"><br />أعضاء مجموعة ”${groupTask.group.name}“، السلام عليكم.<br /><br />يسرّنا إبلاغكم بأنّه تم قبول إجابتكم للمهمّة الجماعيّة: ${groupTask.title}؛ وسيحصل كلّ عضوٍ على المهاراتِ ذات العلاقة بما ساهم! استمروا!<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>` : `<div style="direction: rtl"><br />أعضاء مجموعة ”${groupTask.group.name}“، السلام عليكم.<br /><br />يؤسفنا إبلاغكم بأنّه لم يتم قبول إجابتكم للمهمّة: ${groupTask.title}. لا بأس، استمروا بالمحاولة.<br /><br />مؤسّسة أنظمة غيمة (Cloud Systems).<br /><br /></div>`;
+
+    DynamoDB.update(params, (error, result) => {
+      const emailParams = {
+        Destination: {
+          ToAddresses: memberEmails,
+        },
+        Message: {
+          Body: {
+            Html: {
+              Data: message,
+              Charset: 'utf-8'
+            }
+          },
+          Subject: {
+            Data: subject,
+            Charset: 'utf-8'
+          }
+        },
+        Source: process.env.SENDER_EMAIL,
+        ReplyToAddresses: [process.env.CONTACT_EMAIL]
+      };
+      return SES.sendEmail(emailParams).promise().then((success) => {
+        if (action == 'reject') {
+          return callback(null, 'REJECTED');
+        }
+        Promise.all(ratings.map((rating) => {
+          // Add the skill to the trainee.
+          const params = {
+            TableName: 'trainees',
+            Key: {
+              id: rating.id,
+            },
+            ExpressionAttributeValues: {
+              ':empty_list': [],
+              ':skill': rating.skills,
+              ':updatedAt': timestamp,
+            },
+            UpdateExpression: 'SET skills = list_append(if_not_exists(skills, :empty_list), :skill), updatedAt = :updatedAt',
+            ReturnValues: 'ALL_NEW',
+          };
+          return DynamoDB.update(params).promise();
+        })).then((success) => {
+          callback(null, 'ACCEPTED');
+        }).catch((error) => {
+          console.log('error', error);
+          callback('CANNOT_UPDATE_DATABASE');
+        });
+      });
+    });
+  });
+};
+
+module.exports.notifyWhenGroupTaskCreated = (event, context, callback) => {
+  const id = event.id;
+  console.log('notifyWhenGroupTaskCreated', id);
+  console.log('notifyWhenGroupTaskCreated event', event);
+  console.log('notifyWhenGroupTaskCreated context', context);
+  notifyWhenGroupTaskCreated(id, callback);
+}
+
+module.exports.notifyWhenGroupTaskExpired = (event, context, callback) => {
+  const id = event.id;
+  console.log('notifyWhenGroupTaskExpired', id);
+  console.log('notifyWhenGroupTaskExpired event', event);
+  console.log('notifyWhenGroupTaskExpired context', context);
+  notifyWhenGroupTaskExpired(id, callback);
+}
+
+module.exports.deliverGroupTask = (event, context, callback) => {
+  const authorizer = event.requestContext.authorizer;
+  console.log('deliverGroupTask');
+  console.log('authorizer', authorizer);
+
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
+
+  const id = body ? body.id : null;
+  const answers = body ? body.answers : null;
+  const ratings = body ? body.ratings : null;
+
+  if (!answers || !id || !ratings || answers.length == 0 || ratings.length == 0) {
+    return callback(null, makeResponse(400));
+  }
+
+  deliverGroupTask(id, authorizer.id, answers, ratings, (error, success) => {
+    if (error) {
+      if (error == 'NO_ANSWERS_FOUND' || error == 'NO_TASKS_FOUND' || error == 'INVALID_RATINGS') {
+        return callback(null, makeResponse(400));
+      }
+      if (error == 'TASK_ALREADY_DELIVERED') return callback(null, makeResponse(409));
+      if (error == 'TASK_IS_FORBIDDEN'); return callback(null, makeResponse(403));
+      if (error == 'TASK_HAS_EXPIRED'); return callback(null, makeResponse(408));
+      if (error == 'GONE'); return callback(null, makeResponse(410));
+    }
+    return callback(null, makeResponse(204));
+  });
+}
+
+module.exports.correctGroupTask = (event, context, callback) => {
+  const authorizer = event.requestContext.authorizer;
+  console.log('correctGroupTask');
+  console.log('authorizer', authorizer);
+
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
+
+  const id = body ? body.id : null;
+  const action = body ? body.action : null;
+  const ratings = body ? body.ratings : null;
+
+  if (!id || !action || !ratings || ratings.length == 0) {
+    return callback(null, makeResponse(400));
+  }
+
+  correctGroupTask(id, authorizer.id, action, ratings, (error, success) => {
+    if (error) {
+      if (error == 'TASK_CANNOT_BE_FOUND') {
+        return callback(null, makeResponse(400));
+      }
+      if (error == 'TASK_ALREADY_CORRECTED') return callback(null, makeResponse(409));
+      if (error == 'TASK_HAS_EXPIRED'); return callback(null, makeResponse(408));
+      if (error == 'TASK_CANNOT_BE_CORRECTED'); return callback(null, makeResponse(406));
+      if (error == 'CANNOT_UPDATE_DATABASE'); return callback(null, makeResponse(410));
+    }
+    return callback(null, makeResponse(204));
   });
 }
 
@@ -1320,7 +1768,10 @@ module.exports.createIndividualTask = (event, context, callback) => {
   // Make some variables.
   mentorsString = mentorsString.toLowerCase();
   description = description.replace(/(?:\r\n|\r|\n)/g, '<br />');
-  feedback = feedback.replace(/(?:\r\n|\r|\n)/g, '<br />');
+  
+  if (feedback) {
+    feedback = feedback.replace(/(?:\r\n|\r|\n)/g, '<br />');
+  }
 
   const mentorEmails = mentorsString.split(',').map(function(item) {
     return item.trim();
@@ -1392,7 +1843,7 @@ module.exports.createIndividualTask = (event, context, callback) => {
         return callback(null, makeResponse(204));
       }).catch((error) => {
         console.log('error2', error);
-        return callback(makeResponse(408, error));
+        return callback(null, makeResponse(408, error));
       });
     });
   });
@@ -1891,11 +2342,14 @@ module.exports.stringifyDeliveredTasks = (event, context, callback) => {
 //   createdAt
 //   updatedAt
 
-const createGroupTasks = (createdById, title, feedback, description, references, mentorEmails, skills, publicChannel, privateChannel, expiresAfter, callback) => {
+const createGroupTasks = (createdById, title, feedback, description, references, mentorEmails, skills, publicChannel, expiresAfter, callback) => {
 
   const id = uuid.v4();
   description = description.replace(/(?:\r\n|\r|\n)/g, '<br />');
-  feedback = feedback.replace(/(?:\r\n|\r|\n)/g, '<br />');
+
+  if (feedback) {
+    feedback = feedback.replace(/(?:\r\n|\r|\n)/g, '<br />');
+  }
 
   getMentors(mentorEmails, (mentors) => {
     if (mentors.length == 0) return callback('NO_MENTORS_FOUND');
@@ -1913,15 +2367,15 @@ const createGroupTasks = (createdById, title, feedback, description, references,
             Item: {
               id: id,
               groupId: group.id,
+              group: group,
               title: title,
               description: description,
               mentors: mentors,
               skills: skills,
               references: references,
               publicChannel: publicChannel,
-              privateChannel: privateChannel,
+              privateChannel: group.name,
               expiresAfter: expiresAfter,
-              assignees: group.members,
               statuses: [
                 {
                   event: 'created',
@@ -1949,7 +2403,7 @@ const createGroupTasks = (createdById, title, feedback, description, references,
                 id: id,
               }),
             }).promise();
-            return true;
+            // return true;
           }).catch((error) => {
             console.log('error1', error);
             return error;
@@ -1969,111 +2423,44 @@ const createGroupTasks = (createdById, title, feedback, description, references,
   // TODO: Update group leader.
 }
 
-// createGroupTasks('ahmed', 'title', 'feedback', 'description', ['ref1', 'ref2'], ['hossamzee@gmail.com'], ['WEBSITE_DEV'], 'developer', 'A', 60, (error, success) => {
-//   console.log(error);
-// });
+module.exports.createGroupTasks = (event, context, callback) => {
 
-// module.exports.createGroupTask = (event, context, callback) => {
+  const createdById = event.requestContext.authorizer.id;
 
-//   const createdBy = event.requestContext.authorizer.id;
+  try {
+    var body = JSON.parse(event.body);
+  } catch (error) {
+    var body = null;
+  }
 
-//   try {
-//     var body = JSON.parse(event.body);
-//   } catch (error) {
-//     var body = null;
-//   }
+  const title = body ? body.title : null;
+  var feedback = body ? body.feedback : null;
+  var description = body ? body.description : null;
+  var mentorEmails = body ? body.mentorEmails : null;
+  const skills = body ? body.skills : null;
+  const references = body ? body.references : null;
+  const publicChannel = body ? body.publicChannel : null;
+  const expiresAfter = body ? body.expiresAfter : null;
 
-//   const timestamp = new Date().getTime();
-//   const title = body ? body.title : null;
-//   var feedback = body ? body.feedback : null;
-//   var description = body ? body.description : null;
-//   var mentorsString = body ? body.mentors : null;
-//   const skill = body ? body.skill : null;
-//   const referencesString = body ? body.references : null;
-//   const channel = body ? body.channel : null;
-//   const expiresAfter = body ? body.expiresAfter : null;
+  if (!title || !description || !mentorEmails || !skills || !publicChannel || !expiresAfter) {
+    return callback(null, makeResponse(400));
+  }
 
-//   if (!title || !description || !mentorsString || !skill || !channel || !expiresAfter) {
-//     return callback(null, makeResponse(400));
-//   }
+  // Make some variables.
+  mentorEmails = mentorEmails.map(function(item) {
+    return item.toLowerCase();
+  });
 
-//   // Make some variables.
-//   mentorsString = mentorsString.toLowerCase();
-//   description = description.replace(/(?:\r\n|\r|\n)/g, '<br />');
-//   feedback = feedback.replace(/(?:\r\n|\r|\n)/g, '<br />');
+  // return callback(null, makeResponse(404));
+  // return callback(null, makeResponse(400));
+  // callback(null, makeResponse(204));
+  // return callback(makeResponse(408, error));
 
-//   const mentorEmails = mentorsString.split(',').map(function(item) {
-//     return item.trim();
-//   });
-
-//   console.log('referencesString', referencesString);
-
-//   const references = parseReferences(referencesString);
-
-//   getMentors(mentorEmails, (mentors) => {
-//     if (mentors.length == 0) return callback(null, makeResponse(404)); // NO_MENTORS_FOUND
-//     listAssignees((trainees) => {
-//       if (trainees.length == 0) return callback(null, makeResponse(400)); // NO_TRAINEES_FOUND
-//       Promise.all(trainees.map((assignee) => {
-//         const id = uuid.v4();
-//         console.log('taskId', id);
-//         console.log('taskTitle', title);
-//         console.log('assignee', assignee);
-//         // TODO: Trainee should have only id, email, fullname.
-//         const trainee = {
-//           id: assignee.id,
-//           email: assignee.email,
-//           fullname: assignee.fullname,
-//         };
-//         const putParams = {
-//           TableName: 'individualTasks',
-//           Item: {
-//             id: id,
-//             title: title,
-//             description: description,
-//             mentors: mentors,
-//             skill: skill,
-//             references: references,
-//             channel: channel,
-//             expiresAfter: expiresAfter,
-//             assignedTo: trainee,
-//             statuses: [
-//               {
-//                 event: 'created',
-//                 createdAt: timestamp,
-//                 createdBy: createdBy,
-//               }
-//             ],
-//             currentStatus: 'created',
-//             createdAt: timestamp,
-//             updatedAt: timestamp,
-//           },
-//         };
-
-//         // Since it is optional.
-//         if (feedback && feedback != '') {
-//           putParams.Item.feedback = feedback;
-//         }
-
-//         console.log('params', putParams);
-//         return DynamoDB.put(putParams).promise().then((success) => {
-//           console.log(process.env.AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN);
-//           return StepFunctions.startExecution({
-//             stateMachineArn: process.env.AFTER_INDIVIDUAL_TASK_CREATED_STATE_MACHINE_ARN,
-//             input: JSON.stringify({
-//               id: id,
-//             }),
-//           }).promise();
-//         }).catch((error) => {
-//           console.log('error1', error);
-//           return error;
-//         });
-//       })).then((success) => {
-//         return callback(null, makeResponse(204));
-//       }).catch((error) => {
-//         console.log('error2', error);
-//         return callback(makeResponse(408, error));
-//       });
-//     });
-//   });
-// };
+  createGroupTasks(
+    createdById, title, feedback, description, references, mentorEmails, skills, publicChannel, expiresAfter,
+    (error, success) => {
+      if (error) callback(null, makeResponse(408));
+      callback(null, makeResponse(201));
+    }
+  );
+};

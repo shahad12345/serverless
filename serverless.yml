@@ -168,6 +168,22 @@ functions:
     handler: handler.notifyWhenGroupTaskCreated
   notifyWhenGroupTaskExpired:
     handler: handler.notifyWhenGroupTaskExpired
+  deliverGroupTask:
+    handler: handler.deliverGroupTask
+    events:
+      - http:
+          path: group-tasks/deliver
+          method: post
+          cors: true
+          authorizer: authTrainee
+  correctGroupTask:
+    handler: handler.correctGroupTask
+    events:
+      - http:
+          path: group-tasks/correct
+          method: post
+          cors: true
+          authorizer: authContributor
 
   authTraineeInfo:
     handler: handler.authTraineeInfo
